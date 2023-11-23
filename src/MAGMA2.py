@@ -2,8 +2,8 @@ import numpy as np
 import scipy.optimize
 
 from typing import *
-
 from kernels import *
+from utils import *
 
 
 class MAGMA:
@@ -70,7 +70,7 @@ class MAGMA:
     def set_TY(self, T: Union[np.ndarray, list(np.ndarray)], Y: Union[np.ndarray, list[np.ndarray]]) -> None:
         if T is None:
             assert self.common_T is not None
-            T = np.repeat(self.common_T, len(Y))
+            T = np.tile(self.common_T, (len(Y), 1))
 
         for (t, y) in zip(T, Y):
             assert len(t) == len(y)
@@ -104,6 +104,7 @@ class MAGMA:
             m0 = np.array(m0)
         assert isinstance(m0, np.ndarray) and len(m0) == self.n_common_T
         self.m0 = m0
+        self.m0_estim = None
 
 
     def set_theta0(self, theta0: Union[int, float, list, np.ndarray]) -> None:
@@ -114,8 +115,9 @@ class MAGMA:
 
     def set_Theta(self, Theta: Union[int, float, list, np.ndarray]) -> None:
         if Theta is None:
-            if self.common_hp_flag: Theta = self.kernel_c.init_parameters()
-            else: Theta = [self.kernel_c.init_parameters() for _ in range(self.n_individuals)]
+            if self.common_hp_flag: 
+                Theta = self.kernel_c.init_parameters()
+            else: Theta = np.array([self.kernel_c.init_parameters() for _ in range(self.n_individuals)])
         else:
             assert not self.common_hp_flag and len(Theta) == self.n_individuals
         self.Theta = Theta
@@ -138,14 +140,14 @@ class MAGMA:
     def save_history(self) -> None:
         if self.save_history_flag:
             self.history.append({
-                "m0": self.m0,
+                "m0": self.m0_estim,
                 "theta0": self.theta0,
                 "Theta": self.Theta,
                 "Sigma": self.Sigma
             })
 
 
-    def compute_kernels(self) -> list[np.ndarray]:
+    def compute_kernels(self):
         self.K_theta0 = self.kernel_k.compute_all(self.theta0, self.common_T)
         self.inv_K_theta0 = np.linalg.inv(self.K_theta0)
 
@@ -164,7 +166,7 @@ class MAGMA:
                 inv_Psi_theta_sigma_i = np.linalg.inv(Psi_theta_sigma_i)
                 self.Psi_theta_sigma.append(Psi_theta_sigma_i)
                 self.inv_Psi_theta_sigma.append(inv_Psi_theta_sigma_i)
-
+        
 
     def E_step(self):
         sum_inv_Psi_theta_sigma = np.sum(self.inv_Psi_theta_sigma, axis=0)
@@ -173,21 +175,44 @@ class MAGMA:
 
 
     def M_step(self):
-        theta0 = None
+        theta0 = scipy.optimize.minimize(
+            fun=lambda x, kernel_k, common_T, m0, m0_estim, K: -log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K),
+            x0=self.theta0,
+            args=[self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K],
+            method="L-BFGS-B"
+        ).x
 
         if self.common_hp_flag:
-            pass
+            # TODO
+            fun = None
+            args = None
         else:
-            pass
+            # TODO: 
+            fun = None
+            args = None
+
+        Theta_Sigma0 = _flatten_Theta_Sigma(self.Theta, self.Sigma, self.common_hp_flag)
+        Theta_Sigma = scipy.optimize.minimize(
+            fun=None,
+            x0=Theta_Sigma0,
+            method="L-BFGS-B"
+        ).x
+        Theta, Sigma = _retrieve_Theta_Sigma(Theta_Sigma, self.n_individuals, self.common_hp_flag)
+
+        self.theta0 = theta0
+        self.Theta = Theta
+        self.Sigma = Sigma
+        self.compute_kernels()
 
 
     def fit(self, max_iterations: int=20, eps: float=1e-3):
         for i in range(max_iterations):
-            _m0, _theta0, _Theta, _Sigma = self.m0, self.theta0, self.Theta, self.Sigma
+            _m0_estim, _theta0, _Theta, _Sigma = self.m0_estim, self.theta0, self.Theta, self.Sigma
             self.E_step(); self.M_step()
             self.save_history()
 
-            if (np.linalg.norm(_m0 - self.m0) < eps and 
+            ## test convergence on log likelihood instead
+            if (np.linalg.norm(_m0_estim - self.m0_estim) < eps and 
                 np.linalg.norm(_theta0 - self.theta0) < eps and 
                 np.linalg.norm(np.array(_Theta) - np.array(self.Theta)) < eps and
                 np.linalg.norm(np.array(_Sigma) - np.array(self.Sigma)) < eps):
