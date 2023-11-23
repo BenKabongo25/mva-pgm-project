@@ -79,24 +79,11 @@ class GaussianKernel(Kernel):
     """Gaussian (Radial Basis Function) Kernel
     """
 
-    def __init__(self, parameters: Union[list, np.ndarray] = None):
-        super().__init__(parameters)
-
     def update_parameters(self, parameters=None):
-        assert len(parameters) == 1
-        self._sigma = parameters[0]
-        self.parameters = parameters
+        self._sigma = GaussianKernel._check_parameters(parameters)
 
     def __call__(self, x, y):
-        return np.exp(-((x - y) ** 2) / (2 * (self._sigma ** 2)))
-
-    @classmethod
-    def init_parameters(cls) -> float:
-        return np.random.random()
-
-    @classmethod
-    def compute(cls, sigma: Union[int, float], x, y):
-        return np.exp(-((x - y) ** 2) / (2 * (sigma ** 2)))
+        return GaussianKernel._apply(self._sigma, x, y)
 
     @classmethod
     def init_parameters(cls) -> np.ndarray:
@@ -104,8 +91,13 @@ class GaussianKernel(Kernel):
 
     @classmethod
     def _check_parameters(cls, parameters: Union[int, float]):
-        assert isinstance(parameters, (int, float))
-        return parameters
+        if isinstance(parameters, (int, float)):
+            _sigma = parameters
+        else:
+            assert len(parameters) == 1
+            _sigma = parameters[0]
+        assert _sigma > 0
+        return _sigma
 
     @classmethod
     def _apply(cls, 
