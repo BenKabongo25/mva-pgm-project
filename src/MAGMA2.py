@@ -175,8 +175,10 @@ class MAGMA:
 
 
     def M_step(self):
+        # max logL == min -logL
         theta0 = scipy.optimize.minimize(
             fun=lambda x, kernel_k, common_T, m0, m0_estim, K: -log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K),
+            jac=lambda x, kernel_k, common_T, m0, m0_estim, K: -derivate_log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K),
             x0=self.theta0,
             args=[self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K],
             method="L-BFGS-B"
@@ -185,16 +187,20 @@ class MAGMA:
         if self.common_hp_flag:
             # TODO
             fun = None
+            jac = None
             args = None
         else:
             # TODO: 
             fun = None
+            jac = None
             args = None
 
         Theta_Sigma0 = _flatten_Theta_Sigma(self.Theta, self.Sigma, self.common_hp_flag)
         Theta_Sigma = scipy.optimize.minimize(
-            fun=None,
+            fun=fun,
+            jac=jac,
             x0=Theta_Sigma0,
+            args=args,
             method="L-BFGS-B"
         ).x
         Theta, Sigma = _retrieve_Theta_Sigma(Theta_Sigma, self.n_individuals, self.common_hp_flag)

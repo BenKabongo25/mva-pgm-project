@@ -80,7 +80,12 @@ def log_likelihood_theta0(theta0: np.ndarray,
     return _log_likelihood(m0_estim, m0, K_theta0, K_estim)
 
 
-def derivate_log_likelihood_theta0():
+def derivate_log_likelihood_theta0(theta0: np.ndarray, 
+                        kernel_k: Kernel, 
+                        common_T: np.ndarray,
+                        m0: np.ndarray,
+                        m0_estim: np.ndarray, 
+                        K_estim: np.ndarray) -> np.ndarray:
     pass
     
 
