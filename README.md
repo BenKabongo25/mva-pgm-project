@@ -1,1 +1,1 @@
-# mva-pgm-project
+# MAGMA Project
