@@ -1,9 +1,20 @@
 import numpy as np
 import scipy.optimize
-
 from typing import *
-from kernels import *
-from utils import *
+
+from kernels import (Kernel, 
+                    ExponentiatedQuadraticKernel, 
+                    GaussianKernel)
+from utils import (log_likelihood_theta0, 
+                   derivate_log_likelihood_theta0,
+                   log_likelihood_Theta_Sigma_Common_HP,
+                   derivate_log_likelihood_Theta_Sigma_Common_HP,
+                   log_likelihood_Theta_Sigma_i_Different_HP,
+                   derivate_log_likelihood_Theta_Sigma_i_Different_HP,
+                   log_likelihood_monitoring,
+                   derivate_log_likelihood_monitoring,
+                   concatenate_Theta_Sigma_i,
+                   retrieve_Theta_Sigma_i)
 
 
 class MAGMA:
@@ -176,34 +187,52 @@ class MAGMA:
 
     def M_step(self):
         # max logL == min -logL
+
+        fun_theta0 = lambda x, kernel_k, common_T, m0, m0_estim, K: -log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K)
+        jac_theta0 = lambda x, kernel_k, common_T, m0, m0_estim, K: -derivate_log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K)
+
         theta0 = scipy.optimize.minimize(
-            fun=lambda x, kernel_k, common_T, m0, m0_estim, K: -log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K),
-            jac=lambda x, kernel_k, common_T, m0, m0_estim, K: -derivate_log_likelihood_theta0(x, kernel_k, common_T, m0, m0_estim, K),
+            fun=fun_theta0,
+            jac=jac_theta0,
             x0=self.theta0,
             args=[self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K],
             method="L-BFGS-B"
         ).x
 
         if self.common_hp_flag:
-            # TODO
-            fun = None
-            jac = None
-            args = None
-        else:
-            # TODO: 
-            fun = None
-            jac = None
-            args = None
+            fun_Theta_Sigma = lambda x, k_c, cmn_T, T, Y, m0_, K: -log_likelihood_Theta_Sigma_Common_HP(x, k_c, cmn_T, T, Y, m0_, K)
+            jac_Theta_Sigma = lambda x, k_c, cmn_T, T, Y, m0_, K: -derivate_log_likelihood_Theta_Sigma_Common_HP(x, k_c, cmn_T, T, Y, m0_, K)
+            args = [self.kernel_c, self.common_T, self.T, self.Y, self.m0_estim, self.K]
+            Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
 
-        Theta_Sigma0 = _flatten_Theta_Sigma(self.Theta, self.Sigma, self.common_hp_flag)
-        Theta_Sigma = scipy.optimize.minimize(
-            fun=fun,
-            jac=jac,
-            x0=Theta_Sigma0,
-            args=args,
-            method="L-BFGS-B"
-        ).x
-        Theta, Sigma = _retrieve_Theta_Sigma(Theta_Sigma, self.n_individuals, self.common_hp_flag)
+            Theta_Sigma = scipy.optimize.minimize(
+                fun=fun_Theta_Sigma, 
+                jac=jac_Theta_Sigma,
+                x0=Theta_Sigma0,
+                args=args,
+                method="L-BFGS-B"
+            ).x
+            Theta, Sigma = retrieve_Theta_Sigma_i(Theta_Sigma)
+
+        else:
+            Theta = np.zeros_like(self.Theta)
+            Sigma = np.zeros_like(self.Sigma)
+
+            fun_Theta_Sigma = lambda x, k_c, cmn_T, T, Y, m0_, K: -log_likelihood_Theta_Sigma_i_Different_HP(x, k_c, cmn_T, T, Y, m0_, K)
+            jac_Theta_Sigma = lambda x, k_c, cmn_T, T, Y, m0_, K: -derivate_log_likelihood_Theta_Sigma_i_Different_HP(x, k_c, cmn_T, T, Y, m0_, K)
+
+            for i in range(self.n_individuals):
+                Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
+                Theta_Sigma_i = scipy.optimize.minimize(
+                    fun=fun_Theta_Sigma, 
+                    jac=jac_Theta_Sigma,
+                    x0=Theta_Sigma0,
+                    args=[self.kernel_c, self.common_T, self.T[i], self.Y[i], self.m0_estim, self.K],
+                    method="L-BFGS-B"
+                ).x
+                Theta_i, Sigma_i = retrieve_Theta_Sigma_i(Theta_Sigma_i)
+                Theta[i] = Theta_i
+                Sigma[i] = Sigma_i
 
         self.theta0 = theta0
         self.Theta = Theta
@@ -213,11 +242,14 @@ class MAGMA:
 
     def fit(self, max_iterations: int=20, eps: float=1e-3):
         for i in range(max_iterations):
+            # last_log_likelihood_monitoring = ...
+            
             _m0_estim, _theta0, _Theta, _Sigma = self.m0_estim, self.theta0, self.Theta, self.Sigma
             self.E_step(); self.M_step()
             self.save_history()
 
             ## test convergence on log likelihood instead
+            #if log_likelihood_monitoring(mu0, self.m0, ...)
             if (np.linalg.norm(_m0_estim - self.m0_estim) < eps and 
                 np.linalg.norm(_theta0 - self.theta0) < eps and 
                 np.linalg.norm(np.array(_Theta) - np.array(self.Theta)) < eps and
