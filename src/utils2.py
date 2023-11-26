@@ -87,7 +87,10 @@ def retrieve_Theta_Sigma_i(Theta_Sigma_i: np.ndarray) -> list[Union[int, float],
     """
     Theta = Theta_Sigma_i[:-1]
     Sigma = Theta_Sigma_i[-1]
-    Sigma = Sigma + 1e-6 * np.eye(Sigma.shape[0])
+    if Sigma.ndim==0:
+        Sigma = Sigma + 1e-6 
+    else :
+        Sigma = Sigma + 1e-6 * np.eye(len(Sigma))
     return Theta, Sigma
 
 
