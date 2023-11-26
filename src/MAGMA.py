@@ -24,7 +24,7 @@ class MAGMA:
     :param Sigma: noise variance associated with the i-th individual 
     :param kernel_k: kernel k_theta0 object
     :param kernel_c: kernel c_theta_i object
-    :param common_hp_flag: true => common hyper parameters theta and sigma
+    :param common_hp_flag: true -> common hyper parameters theta and sigma
     :param save_history_flag
     """
 
@@ -43,7 +43,7 @@ class MAGMA:
                 kernel_c: Kernel=ExponentiatedQuadraticKernel,
         ):
         self.set_common_T(common_T, T)
-        self.n_common_T = len(common_T)
+        self.n_common_T = len(self.common_T)
 
         self.set_TY(T, Y) # self.T, self.Y
         self.n_individuals = len(self.Y)
@@ -87,16 +87,6 @@ class MAGMA:
 
         self.T = T
         self.Y = Y
-
-    
-#    def _normalize_Y(self, T: Union[np.ndarray, list(np.ndarray)], Y: Union[np.ndarray, list[np.ndarray]]) -> None:
-#        assert self.common_T is not None
-#        Y_norm = np.zeros(self.n_individuals, self.n_common_T, len(Y[0][0]))
-#        for idx in range(self.n_individuals):
-#            uniques_ti, idx_in_T = np.unique(T[idx], return_index=True)
-#            idx_in_common_T = np.where(np.isin(self.common_T, uniques_ti, assume_unique=True))[0]
-#            Y_norm[idx, idx_in_common_T] = Y[idx][idx_in_T]
-#        self.Y_norm = Y_norm
 
 
     def set_m0(self, m0: Union[int, float, list, np.ndarray]) -> None:
