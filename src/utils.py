@@ -30,7 +30,8 @@ def _check_params_multivariate_normal(x: np.ndarray, mu: np.ndarray, Sigma: np.n
 
     assert Sigma.shape == (d, d)
     det_Sigma = np.linalg.det(Sigma)
-    assert det_Sigma > 0
+    det_Sigma = np.abs(det_Sigma) # ??? log (x) x > 0
+    assert det_Sigma != 0
     if inv_Sigma is None: inv_Sigma = np.linalg.inv(Sigma)
     else: assert inv_Sigma.shape == Sigma.shape
 
