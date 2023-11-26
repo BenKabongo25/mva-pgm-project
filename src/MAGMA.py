@@ -201,6 +201,7 @@ class MAGMA:
 
         if self.common_hp_flag:
             if self.scipy_optimize_display:
+                print("=========================================")
                 print("Theta & Sigma")
 
             Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
@@ -217,9 +218,10 @@ class MAGMA:
         else:
             Theta = np.zeros_like(self.Theta)
             Sigma = np.zeros_like(self.Sigma)
-            
+
             for i in range(self.n_individuals):
                 if self.scipy_optimize_display:
+                    print("=========================================")
                     print(f"Theta & Sigma {i}")
 
                 Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
@@ -261,7 +263,7 @@ class MAGMA:
 
 
     def fit(self, max_iterations: int=20, eps: float=1e-2):
-        for i in range(max_iterations):
+        for _ in range(max_iterations):
             LL = self.LL_theta0 + self.LL_Theta_Sigma
             self.E_step()
             self.M_step()

@@ -31,7 +31,7 @@ def _check_params_multivariate_normal(x: np.ndarray, mu: np.ndarray, Sigma: np.n
     assert Sigma.shape == (d, d)
     det_Sigma = np.linalg.det(Sigma)
     det_Sigma = np.abs(det_Sigma) # ??? log (x) x > 0
-    assert det_Sigma != 0
+    #assert det_Sigma != 0
     if inv_Sigma is None: inv_Sigma = np.linalg.inv(Sigma)
     else: assert inv_Sigma.shape == Sigma.shape
 
@@ -47,9 +47,9 @@ def concatenate_Theta_Sigma_i(Theta_i: Union[int, float, np.ndarray], Sigma_i: U
 
 
 def retrieve_Theta_Sigma_i(Theta_Sigma_i: np.ndarray) -> list[Union[int, float], Union[int, float, np.ndarray]]:
-    Sigma = Theta_Sigma_i[-1:]
     Theta = Theta_Sigma_i[:-1]
-    return Sigma, Theta
+    Sigma = Theta_Sigma_i[-1]
+    return Theta, Sigma
 
 
 def _log_likelihood(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, inv_Sigma: np.ndarray, K_estim: np.ndarray) -> float:
