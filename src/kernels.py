@@ -5,7 +5,7 @@ from typing import *
 def make_grids(X: Union[list, np.ndarray]) -> list[np.ndarray, np.ndarray]:
     X = X if isinstance(X, np.ndarray) else np.ndarray(X)
     N = len(X)
-    XX = np.tile(X, (N, 1))
+    XX = np.tile(X, (N, 1)).T
     YY = XX.T
     return XX, YY
 
@@ -18,6 +18,7 @@ class Kernel:
     Kernel classes implement their own class functions :
     - init_parameters: for initializing kernel parameters
     - compute: to compute the kernel function without creating a class object 
+    - derivate_parameters: derivative function of parameters with respect to output
     """
 
     def __init__(self, parameters: Union[list, np.ndarray]=None):
@@ -35,7 +36,7 @@ class ExponentiatedQuadraticKernel(Kernel):
     def update_parameters(self, parameters: Union[np.ndarray, list[float, float]]=None):
         self._v, self._l = ExponentiatedQuadraticKernel._check_parameters(parameters)
 
-    def __call__(self, x: Union[int, float, np.ndarray], y: Union[int, float, np.ndarray]):
+    def __call__(self, x: Union[int, float, np.ndarray], y: Union[int, float, np.ndarray]) -> Union[float, np.ndarray]:
         return ExponentiatedQuadraticKernel._apply(self._v, self._l, x, y)
 
     @classmethod
@@ -55,7 +56,7 @@ class ExponentiatedQuadraticKernel(Kernel):
                 _l: Union[int, float],
                 x: Union[int, float, np.ndarray],
                 y: Union[int, float, np.ndarray]
-        ):
+        ) -> Union[float, np.ndarray]:
         return (_v ** 2) * np.exp(- ((x - y) ** 2) / (2 * (_l ** 2)) )
 
     @classmethod
@@ -63,7 +64,7 @@ class ExponentiatedQuadraticKernel(Kernel):
                 parameters: Union[np.ndarray, list[float, float]], 
                 x: Union[int, float, np.ndarray],
                 y: Union[int, float, np.ndarray]
-        ):
+        ) -> Union[float, np.ndarray]:
         _v, _l = ExponentiatedQuadraticKernel._check_parameters(parameters)
         return ExponentiatedQuadraticKernel._apply(_v, _l, x, y)
 
@@ -71,9 +72,23 @@ class ExponentiatedQuadraticKernel(Kernel):
     def compute_all(cls,
                     parameters: Union[np.ndarray, list[float, float]],
                     X: Union[list, np.ndarray]
-        ):
+        ) -> np.ndarray:
         XX, YY = make_grids(X)
         return ExponentiatedQuadraticKernel.compute(parameters, XX, YY)
+
+    @classmethod
+    def derivate_parameters(cls, 
+                            parameters: Union[np.ndarray, list[float, float]],
+                            X: Union[list, np.ndarray]
+        ) -> np.ndarray:
+        _v, _l = ExponentiatedQuadraticKernel._check_parameters(parameters)
+        XX, YY = make_grids(X)
+        XX_diff_square = (XX - YY) ** 2
+        exp_XX_diff_square = np.exp(- XX_diff_square / (2 * (_l ** 2)) )
+        d_v = 2 * _v * exp_XX_diff_square
+        d_l = - ((2 * _v ** 2) / (_l ** 3)) * XX_diff_square * exp_XX_diff_square
+        d_v, d_l = d_v[np.newaxis, :], d_l[np.newaxis, :]
+        return np.concatenate([d_v, d_l])
 
 
 class GaussianKernel(Kernel):
@@ -83,15 +98,15 @@ class GaussianKernel(Kernel):
     def update_parameters(self, parameters=None):
         self._sigma = GaussianKernel._check_parameters(parameters)
 
-    def __call__(self, x, y):
+    def __call__(self, x: Union[int, float, np.ndarray], y: Union[int, float, np.ndarray]) -> Union[float, np.ndarray]:
         return GaussianKernel._apply(self._sigma, x, y)
 
     @classmethod
-    def init_parameters(cls) -> np.ndarray:
+    def init_parameters(cls) -> float:
         return np.random.random()
 
     @classmethod
-    def _check_parameters(cls, parameters: Union[int, float]):
+    def _check_parameters(cls, parameters: Union[int, float]) -> Union[int, float]:
         if isinstance(parameters, (int, float)):
             _sigma = parameters
         else:
@@ -105,7 +120,7 @@ class GaussianKernel(Kernel):
                 _sigma: Union[int, float],
                 x: Union[int, float, np.ndarray],
                 y: Union[int, float, np.ndarray]
-        ):
+        ) -> Union[float, np.ndarray]:
         return np.exp(-((x - y) ** 2) / (2 * (_sigma ** 2)))
 
     @classmethod
@@ -113,7 +128,7 @@ class GaussianKernel(Kernel):
                 parameters: Union[int, float], 
                 x: Union[int, float, np.ndarray],
                 y: Union[int, float, np.ndarray]
-        ):
+        ) -> Union[float, np.ndarray]:
         _sigma = GaussianKernel._check_parameters(parameters)
         return GaussianKernel._apply(_sigma, x, y)
 
@@ -121,9 +136,14 @@ class GaussianKernel(Kernel):
     def compute_all(cls,
                     parameters: Union[int, float],
                     X: Union[list, np.ndarray]
-        ):
+        ) -> np.ndarray:
         XX, YY = make_grids(X)
         return GaussianKernel.compute(parameters, XX, YY)
 
+    @classmethod
+    def derivate_parameters(cls, 
+                            parameters:  Union[int, float],
+                            X: Union[list, np.ndarray]
+        ) -> np.ndarray:
+        raise NotImplementedError
 
-### TODO: Implement other kernels for experimentation
