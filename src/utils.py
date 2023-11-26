@@ -42,7 +42,7 @@ def concatenate_Theta_Sigma_i(Theta_i: Union[int, float, np.ndarray], Sigma_i: U
         Theta_i = np.array([Theta_i])
     if isinstance(Sigma_i, (int, float)):
         Sigma_i = np.array([Sigma_i])
-    return np.concatenate(Theta_i, Sigma_i)
+    return np.concatenate([Theta_i, Sigma_i])
 
 
 def retrieve_Theta_Sigma_i(Theta_Sigma_i: np.ndarray) -> list[Union[int, float], Union[int, float, np.ndarray]]:
@@ -61,19 +61,22 @@ def log_likelihood_theta0(
         common_T: np.ndarray,
         m0: np.ndarray,
         m0_estim: np.ndarray, 
-        K_estim: np.ndarray) -> list[float, np.ndarray]:
-    
-    z = (m0_estim - m0)[:, np.newaxis]
+        K_estim: np.ndarray,
+        minimize: bool=False,
+        derivative: bool=False) -> list[float, np.ndarray]:
+
+    factor = -1 if minimize else 1
+
     K_theta0 = kernel_k.compute_all(theta0, common_T)
     inv_K_theta0 = np.linalg.inv(K_theta0)
 
-    print("z.shape :", z.shape)
-    print("inv_K_theta.shape :", inv_K_theta0.shape)
+    LL_theta0 = factor * _log_likelihood(m0_estim, m0, K_theta0, inv_K_theta0, K_estim)
+    #print("LL_theta0 :", LL_theta0)
+    if not derivative:
+        return LL_theta0
 
-    LL_theta0 = _log_likelihood(m0_estim, m0, K_theta0, inv_K_theta0, K_estim)
-    print("LL_theta0 :", LL_theta0)
-    d_theta0 = np.zeros_like(theta0)
-
+    z = (m0_estim - m0)[:, np.newaxis]
+    d_theta0 = np.zeros_like(theta0)        
     d_K_theta0 = (- 0.5 * inv_K_theta0 
                   + 0.5 * inv_K_theta0 @ z @ z.T @ inv_K_theta0 
                   + 0.5 * K_estim @ inv_K_theta0 @ inv_K_theta0)
@@ -91,7 +94,11 @@ def log_likelihood_Theta_Sigma_Common_HP(
         T: np.ndarray,
         Y: np.ndarray,
         m0_estim: np.ndarray,
-        K_estim: np.ndarray) -> list[float, np.ndarray]:
+        K_estim: np.ndarray,
+        minimize: bool=False,
+        derivative: bool=False) -> list[float, np.ndarray]:
+
+    factor = -1 if minimize else 1
 
     n_individuals = len(Y)
     n_common_T = len(common_T)
@@ -102,23 +109,32 @@ def log_likelihood_Theta_Sigma_Common_HP(
     inv_Psi_Theta_Sigma = np.linalg.inv(Psi_Theta_Sigma)
 
     LL_Theta_Sigma = 0
-    d_Theta_Sigma = np.zeros_like(Theta_Sigma)
-    d_Psi_Theta_Sigma = 0
+    if derivative:
+        d_Theta_Sigma = np.zeros_like(Theta_Sigma)
+        d_Psi_Theta_Sigma = 0
 
     for i in range(n_individuals):
         #C_Theta_i = kernel_c.compute_all(Theta, T[i])
         #Psi_Theta_Sigma_i = C_Theta_i + Sigma * np.identity(len(T[i]))
         #inv_Psi_Theta_Sigma_i = np.linalg.inv(Psi_Theta_Sigma_i)
         LL_Theta_Sigma += _log_likelihood(Y[i], m0_estim, Psi_Theta_Sigma, inv_Psi_Theta_Sigma, K_estim)
-        z = (Y[i] - m0_estim)[:, np.newaxis]
-        d_Psi_Theta_Sigma += (- 0.5 * inv_Psi_Theta_Sigma 
-                        + 0.5 * inv_Psi_Theta_Sigma @ z @ z.T @ inv_Psi_Theta_Sigma 
-                        + 0.5 * K_estim @ inv_Psi_Theta_Sigma @ inv_Psi_Theta_Sigma)
+
+        if derivative:
+            z = (Y[i] - m0_estim)[:, np.newaxis]
+            d_Psi_Theta_Sigma += (- 0.5 * inv_Psi_Theta_Sigma 
+                                  + 0.5 * inv_Psi_Theta_Sigma @ z @ z.T @ inv_Psi_Theta_Sigma 
+                                  + 0.5 * K_estim @ inv_Psi_Theta_Sigma @ inv_Psi_Theta_Sigma)
+
+    LL_Theta_Sigma = factor * LL_Theta_Sigma
+    #print("LL_Theta_Sigma :", LL_Theta_Sigma)
+    if not derivative:
+        return LL_Theta_Sigma
 
     d_Theta_of_Psi_Theta_Sigma = kernel_c.derivate_parameters(Theta, common_T)
     for i in range(len(Theta)):
         d_Theta_Sigma[i] = (d_Psi_Theta_Sigma * d_Theta_of_Psi_Theta_Sigma[i]).sum()
     d_Theta_Sigma[-1] = (d_Psi_Theta_Sigma * Sigma * np.identity(n_common_T)).sum()
+    d_Theta_Sigma = factor * d_Theta_Sigma
 
     return LL_Theta_Sigma, d_Theta_Sigma
 
@@ -130,9 +146,12 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
         Ti: np.ndarray,
         Yi: np.ndarray,
         m0_estim: np.ndarray,
-        K_estim: np.ndarray) -> list[float, np.ndarray]: 
+        K_estim: np.ndarray,
+        minimize: bool=False,
+        derivative: bool=False) -> list[float, np.ndarray]: 
 
-    z = (Yi - m0_estim)[:, np.newaxis]
+    factor = -1 if minimize else 1
+
     n_common_T = len(common_T)
     Theta, Sigma = retrieve_Theta_Sigma_i(Theta_Sigma_i)
 
@@ -145,9 +164,13 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
     #Psi_Theta_Sigma = C_Theta + Sigma * np.identity(len(Ti))
     #inv_Psi_Theta_Sigma = np.linalg.inv(Psi_Theta_Sigma)
     
-    LL_Theta_Sigma = _log_likelihood(Yi, m0_estim, Psi_Theta_Sigma, inv_Psi_Theta_Sigma, K_estim)
-    d_Theta_Sigma = np.zeros_like(Theta_Sigma_i)
+    LL_Theta_Sigma = factor * _log_likelihood(Yi, m0_estim, Psi_Theta_Sigma, inv_Psi_Theta_Sigma, K_estim)
+    #print("LL_Theta_Sigma :", LL_Theta_Sigma)
+    if not derivative:
+        return LL_Theta_Sigma
 
+    z = (Yi - m0_estim)[:, np.newaxis]
+    d_Theta_Sigma = np.zeros_like(Theta_Sigma_i)
     d_Psi_Theta_Sigma = (- 0.5 * inv_Psi_Theta_Sigma 
                         + 0.5 * inv_Psi_Theta_Sigma @ z @ z.T @ inv_Psi_Theta_Sigma 
                         + 0.5 * K_estim @ inv_Psi_Theta_Sigma @ inv_Psi_Theta_Sigma)
@@ -156,18 +179,7 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
     for i in range(len(Theta)):
         d_Theta_Sigma[i] = (d_Psi_Theta_Sigma * d_Theta_of_Psi_Theta_Sigma[i]).sum()
     d_Theta_Sigma[-1] = (d_Psi_Theta_Sigma * Sigma * np.identity(n_common_T)).sum()
+    d_Theta_Sigma = factor * d_Theta_Sigma
 
     return LL_Theta_Sigma, d_Theta_Sigma
     
-
-def log_likelihood_monitoring(
-        mu0: np.ndarray, 
-        m0: np.ndarray,
-        Y: np.ndarray,
-        inv_K_theta0: np.ndarray,
-        inv_Psi_Theta_Sigma: np.ndarray) -> float:
-    
-    return (mu0.T @ (inv_K_theta0 + np.sum(inv_Psi_Theta_Sigma, axis=0)) @ mu0 
-            - 2 * mu0.T @ (inv_K_theta0 @ m0, + np.sum(inv_Psi_Theta_Sigma, axis=0) @ Y)) ## ?? humm...
-
-

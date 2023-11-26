@@ -8,7 +8,6 @@ from kernels import (Kernel,
 from utils import (log_likelihood_theta0, 
                    log_likelihood_Theta_Sigma_Common_HP,
                    log_likelihood_Theta_Sigma_i_Different_HP,
-                   log_likelihood_monitoring,
                    concatenate_Theta_Sigma_i,
                    retrieve_Theta_Sigma_i)
 
@@ -39,6 +38,7 @@ class MAGMA:
                 Sigma: Union[int, float, list, np.ndarray]=None,
                 common_hp_flag: bool=True,
                 save_history_flag: bool=False,
+                scipy_optimize_display: bool=False,
                 kernel_k: Kernel=ExponentiatedQuadraticKernel,
                 kernel_c: Kernel=ExponentiatedQuadraticKernel,
         ):
@@ -50,12 +50,15 @@ class MAGMA:
 
         self.common_hp_flag = common_hp_flag
         self.save_history_flag = save_history_flag
+        self.scipy_optimize_display = scipy_optimize_display
 
         self.kernel_k = kernel_k
         self.kernel_c = kernel_c
 
         self.m0_estim = None
         self.K = None
+        self.LL_theta0 = -np.inf
+        self.LL_Theta_Sigma = -np.inf
 
         self.set_m0(m0)
         self.set_theta0(theta0)
@@ -146,7 +149,9 @@ class MAGMA:
                 "K": self.K,
                 "theta0": self.theta0,
                 "Theta": self.Theta,
-                "Sigma": self.Sigma
+                "Sigma": self.Sigma,
+                "LL_theta0": self.LL_theta0,
+                "LL_Theta_Sigma": self.LL_Theta_Sigma
             })
 
 
@@ -182,33 +187,50 @@ class MAGMA:
 
 
     def M_step(self):
+        if self.scipy_optimize_display:
+            print("theta0")
+
         theta0 = scipy.optimize.minimize(
-            fun=lambda x: -log_likelihood_theta0(x, self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K),
+            fun=lambda x: log_likelihood_theta0(x, self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K, 
+                                                minimize=True, derivative=True),
             jac=True,
             x0=self.theta0,
-            method="L-BFGS-B"
+            method="L-BFGS-B",
+            options={"disp": self.scipy_optimize_display}
         ).x
 
         if self.common_hp_flag:
+            if self.scipy_optimize_display:
+                print("Theta & Sigma")
+
             Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
             Theta_Sigma = scipy.optimize.minimize(
-                fun=lambda x: -log_likelihood_Theta_Sigma_Common_HP(x, self.kernel_c, self.common_T, self.T, self.Y, self.m0_estim, self.K), 
+                fun=lambda x: log_likelihood_Theta_Sigma_Common_HP(x, self.kernel_c, self.common_T, self.T, self.Y, 
+                                                                  self.m0_estim, self.K, minimize=True, derivative=True), 
                 jac=True,
                 x0=Theta_Sigma0,
-                method="L-BFGS-B"
+                method="L-BFGS-B",
+                options={"disp": self.scipy_optimize_display}
             ).x
             Theta, Sigma = retrieve_Theta_Sigma_i(Theta_Sigma)
 
         else:
             Theta = np.zeros_like(self.Theta)
             Sigma = np.zeros_like(self.Sigma)
+            
             for i in range(self.n_individuals):
+                if self.scipy_optimize_display:
+                    print(f"Theta & Sigma {i}")
+
                 Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
                 Theta_Sigma_i = scipy.optimize.minimize(
-                    fun=lambda x: -log_likelihood_Theta_Sigma_i_Different_HP(x, self.kernel_c, self.common_T, self.T[i], self.Y[i], self.m0_estim, self.K), 
+                    fun=lambda x: log_likelihood_Theta_Sigma_i_Different_HP(x, self.kernel_c, self.common_T, 
+                                                                            self.T[i], self.Y[i], self.m0_estim, self.K, 
+                                                                            minimize=True, derivative=True), 
                     jac=True,
                     x0=Theta_Sigma0,
-                    method="L-BFGS-B"
+                    method="L-BFGS-B",
+                    options={"disp": self.scipy_optimize_display}
                 ).x
                 Theta_i, Sigma_i = retrieve_Theta_Sigma_i(Theta_Sigma_i)
                 Theta[i] = Theta_i
@@ -219,19 +241,31 @@ class MAGMA:
         self.Sigma = Sigma
 
 
-    def fit(self, max_iterations: int=20, eps: float=1e-3):
-        for i in range(max_iterations):
-            # last_log_likelihood_monitoring = ...
+    def compute_log_likelihood(self):
+        LL_theta0 = log_likelihood_theta0(self.theta0, self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K, 
+                                          minimize=False, derivative=False)
+        LL_Theta_Sigma = 0
+        if self.common_hp_flag:
+            Theta_Sigma = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
+            LL_Theta_Sigma = log_likelihood_Theta_Sigma_Common_HP(Theta_Sigma, self.kernel_c, self.common_T, self.T, self.Y,
+                                                                  self.m0_estim, self.K, minimize=False, derivative=False)
+        else:
+            for i in range(self.n_individuals):
+                Theta_Sigma_i = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
+                LL_Theta_Sigma += log_likelihood_Theta_Sigma_i_Different_HP(Theta_Sigma_i, self.kernel_c, self.common_T,
+                                                                            self.T[i], self.Y[i], self.m0_estim, self.K,
+                                                                            minimize=False, derivative=False)
+        
+        self.LL_theta0 = LL_theta0
+        self.LL_Theta_Sigma = LL_Theta_Sigma
 
-            _m0_estim, _theta0, _Theta, _Sigma = self.m0_estim, self.theta0, self.Theta, self.Sigma
+
+    def fit(self, max_iterations: int=20, eps: float=1e-2):
+        for i in range(max_iterations):
+            LL = self.LL_theta0 + self.LL_Theta_Sigma
             self.E_step()
             self.M_step()
             self.save_history()
-
-            ## test convergence on log likelihood instead
-            #if log_likelihood_monitoring(mu0, self.m0, ...)
-            if (np.linalg.norm(_m0_estim - self.m0_estim) < eps and 
-                np.linalg.norm(_theta0 - self.theta0) < eps and 
-                np.linalg.norm(np.array(_Theta) - np.array(self.Theta)) < eps and
-                np.linalg.norm(np.array(_Sigma) - np.array(self.Sigma)) < eps):
+            if ((self.LL_theta0 + self.LL_Theta_Sigma) - LL) ** 2 < eps:
                 break
+

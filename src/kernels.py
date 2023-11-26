@@ -47,7 +47,8 @@ class ExponentiatedQuadraticKernel(Kernel):
     def _check_parameters(cls, parameters: Union[np.ndarray, list[float, float]]):
         assert len(parameters) == 2
         _v, _l = parameters
-        assert _v > 0 and _l > 0
+        #assert _v > 0 and _l > 0
+        assert _l != 0
         return _v, _l
 
     @classmethod
