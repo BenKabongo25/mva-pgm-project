@@ -61,7 +61,7 @@ class MAGMA:
 
     def kernel_EQ(self,theta,x1,x2):
         """
-        Compute the exponantial quadratic kernel for parameters theta and values x1 and x2
+        Compute the exponential quadratic kernel for parameters theta and values x1 and x2
         """
         return theta[0]**2*np.exp(-(x1-x2)**2/(2*theta[1]**2))
     
@@ -106,10 +106,10 @@ class MAGMA:
         return np.array([derivative0,derivative1,derivative_sigma])
 
     def E_step(self,y):
-        #compute the estimator kernel K
+        # compute the estimator kernel K
         self.kernel_K = np.linalg.inv(np.linalg.inv(self.kernel_Ktheta)+np.sum([np.linalg.inv(Psi) for Psi in self.kernel_psi]))
 
-        # computethe estimator m0
+        # compute the estimator m0
         compute_psi = np.linalg.inv(self.kernel_Ktheta)@self.m0 + np.sum([np.linalg.inv(self.kernel_psi[i])@y[i] for i in range(self.n_indiv)])
         self.m0_estim = self.kernel_K@compute_psi
 
