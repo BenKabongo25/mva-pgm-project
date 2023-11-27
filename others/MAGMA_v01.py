@@ -1,13 +1,11 @@
 import numpy as np
 import scipy.optimize
-import numpy.linalg as la
-import scipy.linalg as sla
 from typing import *
 
 from kernels import (Kernel, 
                     ExponentiatedQuadraticKernel, 
                     GaussianKernel)
-from utils2 import (log_likelihood_theta0, 
+from utils import (log_likelihood_theta0, 
                    log_likelihood_Theta_Sigma_Common_HP,
                    log_likelihood_Theta_Sigma_i_Different_HP,
                    concatenate_Theta_Sigma_i,
@@ -15,55 +13,19 @@ from utils2 import (log_likelihood_theta0,
 
 
 class MAGMA:
-    """Multi-task Gaussian processes with common mean.
+    """Multi-tAsk Gaussian processes with common MeAn
 
-    Args:
-        T (Union[np.ndarray, list[np.ndarray]]): Time points for each individual.
-        Y (Union[np.ndarray, list[np.ndarray]]): Observations for each individual.
-        common_T (Union[list, np.ndarray], optional): Common time points for all individuals.
-        m0 (Union[int, float, list, np.ndarray], optional): Prior mean.
-        theta0 (Union[int, float, list, np.ndarray], optional): Hyperparameters for covariance kernel k_theta0(.|.).
-        Theta (Union[int, float, list, np.ndarray], optional): Hyperparameters for covariance kernel c_theta_i(.|.).
-        Sigma (Union[int, float, list, np.ndarray], optional): Noise variance associated with the i-th individual.
-        common_hp_flag (bool, optional): True -> common hyperparameters theta and sigma.
-        save_history_flag (bool, optional): Flag to save optimization history.
-        scipy_optimize_display (bool, optional): Flag to display optimization information.
-        kernel_k (Kernel, optional): Kernel k_theta0 object.
-        kernel_c (Kernel, optional): Kernel c_theta_i object.
-
-    Attributes:
-        common_T (np.ndarray): Common time points.
-        n_common_T (int): Number of common time points.
-        T (np.ndarray): Time points for each individual.
-        Y (np.ndarray): Observations for each individual.
-        n_individuals (int): Number of individuals.
-        common_hp_flag (bool): True -> common hyperparameters theta and sigma.
-        save_history_flag (bool): Flag to save optimization history.
-        scipy_optimize_display (bool): Flag to display optimization information.
-        kernel_k (Kernel): Kernel k_theta0 object.
-        kernel_c (Kernel): Kernel c_theta_i object.
-        m0 (np.ndarray): Prior mean.
-        theta0 (np.ndarray): Hyperparameters for covariance kernel k_theta0(.|.).
-        Theta (np.ndarray): Hyperparameters for covariance kernel c_theta_i(.|.).
-        Sigma (np.ndarray): Noise variance associated with the i-th individual.
-        m0_estim (np.ndarray): Estimated prior mean.
-        K (np.ndarray): Inverse covariance matrix.
-        LL_theta0 (float): Log-likelihood for k_theta0.
-        LL_Theta_Sigma (float): Log-likelihood for c_theta_i and Sigma.
-
-    Methods:
-        set_common_T: Set common time points.
-        set_TY: Set time points and observations.
-        set_m0: Set prior mean.
-        set_theta0: Set hyperparameters for covariance kernel k_theta0.
-        set_Theta: Set hyperparameters for covariance kernel c_theta_i.
-        set_Sigma: Set noise variance associated with the i-th individual.
-        init_history: Initialize optimization history.
-        save_history: Save current state to the optimization history.
-        E_step: Perform the E-step of the optimization algorithm.
-        M_step: Perform the M-step of the optimization algorithm.
-        compute_log_likelihood: Compute log-likelihood based on the current parameters.
-        fit: Fit the model using the EM algorithm.
+    :param T
+    :param Y
+    :param common_T
+    :param m0: prior mean
+    :param theta0: hyper-parameters for covariance kernel k_theta0(.|.)
+    :param Theta: hyper-parameters for covariance kernel c_theta_i(.|.)
+    :param Sigma: noise variance associated with the i-th individual 
+    :param kernel_k: kernel k_theta0 object
+    :param kernel_c: kernel c_theta_i object
+    :param common_hp_flag: true -> common hyper parameters theta and sigma
+    :param save_history_flag
     """
 
     def __init__(self,
@@ -80,24 +42,19 @@ class MAGMA:
                 kernel_k: Kernel=ExponentiatedQuadraticKernel,
                 kernel_c: Kernel=ExponentiatedQuadraticKernel,
         ):
-        # Initialize common time points and individuals' data
         self.set_common_T(common_T, T)
         self.n_common_T = len(self.common_T)
 
-        # Initialize time points and observations
-        self.set_TY(T, Y)  # self.T, self.Y
+        self.set_TY(T, Y) # self.T, self.Y
         self.n_individuals = len(self.Y)
 
-        # Set flags and parameters
         self.common_hp_flag = common_hp_flag
         self.save_history_flag = save_history_flag
         self.scipy_optimize_display = scipy_optimize_display
 
-        # Initialize kernels
         self.kernel_k = kernel_k
         self.kernel_c = kernel_c
 
-        # Initialize parameters
         self.m0_estim = None
         self.K = None
         self.LL_theta0 = -np.inf
@@ -109,10 +66,8 @@ class MAGMA:
         self.set_Sigma(Sigma)
         self.init_history()
 
-    # ... (continuation)
 
     def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list[np.ndarray]]=None) -> None: 
-        """Set common time points."""
         if common_T is not None:
             self.common_T = common_T
         else:
@@ -121,10 +76,8 @@ class MAGMA:
             for t in T: all_ti.extend(list(t))
             self.common_T = np.unique(all_ti)
 
-    # ... (continuation)
-    
+
     def set_TY(self, T: Union[np.ndarray, list[np.ndarray]], Y: Union[np.ndarray, list[np.ndarray]]) -> None:
-        """Set time points and observations."""
         if T is None:
             assert self.common_T is not None
             T = np.tile(self.common_T, (len(Y), 1))
@@ -135,10 +88,8 @@ class MAGMA:
         self.T = T
         self.Y = Y
 
-    # ... (continuation)
 
     def set_m0(self, m0: Union[int, float, list, np.ndarray]) -> None:
-        """Set prior mean."""
         if m0 is None:
             m0 = np.zeros(self.n_common_T)
         elif isinstance(m0, (int, float)):
@@ -148,17 +99,14 @@ class MAGMA:
         assert isinstance(m0, np.ndarray) and len(m0) == self.n_common_T
         self.m0 = m0
 
-    # ... (continuation)
 
     def set_theta0(self, theta0: Union[int, float, list, np.ndarray]) -> None:
-        """Set hyperparameters for covariance kernel k_theta0."""
         if theta0 is None:
             theta0 = self.kernel_k.init_parameters()
         self.theta0 = theta0
 
 
     def set_Theta(self, Theta: Union[int, float, list, np.ndarray]) -> None:
-        """Set hyperparameters for covariance kernel c_theta_i."""
         if Theta is None:
             if self.common_hp_flag: 
                 Theta = self.kernel_c.init_parameters()
@@ -170,7 +118,6 @@ class MAGMA:
 
 
     def set_Sigma(self, Sigma: Union[int, float, list, np.ndarray]) -> None:
-        """Set noise variance associated with the i-th individual."""
         if Sigma is None:
             if self.common_hp_flag: Sigma = np.random.random()
             else: Sigma = np.random.random(self.n_individuals)
@@ -181,13 +128,11 @@ class MAGMA:
 
 
     def init_history(self) -> None:
-        """Initialize optimization history."""
         self.history = []
         self.save_history()
 
 
     def save_history(self) -> None:
-        """Save current state to the optimization history."""
         if self.save_history_flag:
             self.history.append({
                 "m0": self.m0_estim,
@@ -201,15 +146,14 @@ class MAGMA:
 
 
     def E_step(self):
-        """Perform the E-step of the optimization algorithm."""
         K_theta0 = self.kernel_k.compute_all(self.theta0, self.common_T)
-        inv_K_theta0 = sla.pinv(K_theta0)
+        inv_K_theta0 = np.linalg.inv(K_theta0)
 
         if self.common_hp_flag:
             C_Theta = self.kernel_c.compute_all(self.Theta, self.common_T)
             Psi_Theta_Sigma = C_Theta + self.Sigma * np.identity(self.n_common_T)
-            inv_Psi_Theta_Sigma = sla.pinv(Psi_Theta_Sigma)
-            inv_Psi_Theta_Sigma_dot_Y = ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0)
+            inv_Psi_Theta_Sigma = np.linalg.inv(Psi_Theta_Sigma)
+            inv_Psi_Theta_Sigma_dot_Y = (self.Y @ inv_Psi_Theta_Sigma).sum(axis=0)
 
         else:
             Psi_Theta_Sigma = []
@@ -219,8 +163,8 @@ class MAGMA:
             for i in range(self.n_individuals):
                 C_Theta_i = self.kernel_c.compute_all(self.Theta[i], self.common_T)
                 Psi_Theta_Sigma_i = C_Theta_i + self.Sigma[i] * np.identity(self.n_common_T)
-                inv_Psi_Theta_Sigma_i = sla.pinv(Psi_Theta_Sigma_i)
-                inv_Psi_Theta_Sigma_dot_Y += inv_Psi_Theta_Sigma_i.dot(self.Y[i])
+                inv_Psi_Theta_Sigma_i = np.linalg.inv(Psi_Theta_Sigma_i)
+                inv_Psi_Theta_Sigma_dot_Y += inv_Psi_Theta_Sigma_i @ self.Y[i]
                 
                 Psi_Theta_Sigma.append(Psi_Theta_Sigma_i)
                 inv_Psi_Theta_Sigma.append(inv_Psi_Theta_Sigma_i)
@@ -228,13 +172,13 @@ class MAGMA:
             Psi_Theta_Sigma = np.array(Psi_Theta_Sigma)
             inv_Psi_Theta_Sigma = np.array(inv_Psi_Theta_Sigma)
 
-        self.K = sla.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
-        self.m0_estim = (self.K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
+        self.K = np.linalg.inv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
+        self.m0_estim = self.K @ (inv_K_theta0 @ self.m0 + inv_Psi_Theta_Sigma_dot_Y)
 
 
     def M_step(self):
-        """Perform the M-step of the optimization algorithm."""
         if self.scipy_optimize_display:
+            print("=========================================")
             print("theta0")
 
         theta0 = scipy.optimize.minimize(
@@ -291,7 +235,6 @@ class MAGMA:
 
 
     def compute_log_likelihood(self):
-        """Compute log-likelihood based on the current parameters."""
         LL_theta0 = log_likelihood_theta0(self.theta0, self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K, 
                                           minimize=False, derivative=False)
         LL_Theta_Sigma = 0
@@ -311,7 +254,6 @@ class MAGMA:
 
 
     def fit(self, max_iterations: int=20, eps: float=1e-2):
-        """Fit the model using the EM algorithm."""
         for _ in range(max_iterations):
             LL = self.LL_theta0 + self.LL_Theta_Sigma
             self.E_step()
