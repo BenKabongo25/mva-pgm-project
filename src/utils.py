@@ -1,8 +1,7 @@
 import numpy as np
+import scipy.linalg
 from kernels import *
 from typing import *
-import numpy.linalg as la
-import scipy.linalg as sla
 
 
 def multivariate_normal_density(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, inv_Sigma: np.ndarray=None,
@@ -27,8 +26,8 @@ def multivariate_normal_density(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray
         exponent = np.array([-0.5 * ((zi.T).dot(inv_Sigma).dot(zi)) for zi in z])
 
     if not log:
-        return (1 / ((np.sqrt((2 * np.pi) ** d) * np.sqrt(sla.det(Sigma))))) * np.exp(exponent)
-    return - (d/2) * np.log(2 * np.pi) - 0.5 * la.slogdet(Sigma)[1] + exponent  
+        return (1 / ((np.sqrt((2 * np.pi) ** d) * np.sqrt(scipy.linalg.det(Sigma))))) * np.exp(exponent)
+    return - (d/2) * np.log(2 * np.pi) - 0.5 * np.linalg.slogdet(Sigma)[1] + exponent  
 
 
 def _check_params_multivariate_normal(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, inv_Sigma: np.ndarray
@@ -137,7 +136,7 @@ def log_likelihood_theta0(
     factor = -1 if minimize else 1
 
     K_theta0 = kernel_k.compute_all(theta0, common_T)
-    inv_K_theta0 = sla.pinv(K_theta0)
+    inv_K_theta0 = scipy.linalg.pinv(K_theta0)
 
     LL_theta0 = factor * _log_likelihood(m0_estim, m0, K_theta0, inv_K_theta0, K_estim)
     
@@ -190,7 +189,7 @@ def log_likelihood_Theta_Sigma_Common_HP(
 
     C_Theta = kernel_c.compute_all(Theta, common_T)
     Psi_Theta_Sigma = C_Theta + Sigma * np.identity(n_common_T)
-    inv_Psi_Theta_Sigma = sla.pinv(Psi_Theta_Sigma)
+    inv_Psi_Theta_Sigma = scipy.linalg.pinv(Psi_Theta_Sigma)
 
     LL_Theta_Sigma = 0
     if derivative:
@@ -256,7 +255,7 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
 
     C_Theta = kernel_c.compute_all(Theta, common_T)
     Psi_Theta_Sigma = C_Theta + Sigma * np.identity(n_common_T)
-    inv_Psi_Theta_Sigma = sla.pinv(Psi_Theta_Sigma)
+    inv_Psi_Theta_Sigma = scipy.linalg.pinv(Psi_Theta_Sigma)
 
     ## or ??
     #C_Theta = kernel_c.compute_all(Theta, Ti)

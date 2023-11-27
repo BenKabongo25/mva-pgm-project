@@ -1,13 +1,11 @@
 import numpy as np
+import scipy.linalg
 import scipy.optimize
-import numpy.linalg as la
-import scipy.linalg as sla
-from typing import *
 from tqdm import tqdm
+from typing import *
 
 from kernels import (Kernel, 
-                    ExponentiatedQuadraticKernel, 
-                    GaussianKernel)
+                    ExponentiatedQuadraticKernel)
 from utils import (log_likelihood_theta0, 
                    log_likelihood_Theta_Sigma_Common_HP,
                    log_likelihood_Theta_Sigma_i_Different_HP,
@@ -23,6 +21,7 @@ class MAGMA:
         Y (Union[np.ndarray, list[np.ndarray]]): Observations for each individual.
         common_T (Union[list, np.ndarray], optional): Common time points for all individuals.
         m0 (Union[int, float, list, np.ndarray], optional): Prior mean.
+        m0_function (Callable): Prior mean function.
         theta0 (Union[int, float, list, np.ndarray], optional): Hyperparameters for covariance kernel k_theta0(.|.).
         Theta (Union[int, float, list, np.ndarray], optional): Hyperparameters for covariance kernel c_theta_i(.|.).
         Sigma (Union[int, float, list, np.ndarray], optional): Noise variance associated with the i-th individual.
@@ -44,6 +43,7 @@ class MAGMA:
         kernel_k (Kernel): Kernel k_theta0 object.
         kernel_c (Kernel): Kernel c_theta_i object.
         m0 (np.ndarray): Prior mean.
+        m0_function (np.ndarray): Prior mean function.
         theta0 (np.ndarray): Hyperparameters for covariance kernel k_theta0(.|.).
         Theta (np.ndarray): Hyperparameters for covariance kernel c_theta_i(.|.).
         Sigma (np.ndarray): Noise variance associated with the i-th individual.
@@ -65,6 +65,7 @@ class MAGMA:
         M_step: Perform the M-step of the optimization algorithm.
         compute_log_likelihood: Compute log-likelihood based on the current parameters.
         fit: Fit the model using the EM algorithm.
+        predict: Predict the output of a new individual.
     """
 
     def __init__(self,
@@ -72,6 +73,7 @@ class MAGMA:
                 Y: Union[np.ndarray, list[np.ndarray]],
                 common_T: Union[list, np.ndarray]=None,
                 m0: Union[int, float, list, np.ndarray]=None, 
+                m0_function: Callable=None,
                 theta0: Union[int, float, list, np.ndarray]=None, 
                 Theta: Union[int, float, list, np.ndarray]=None, 
                 Sigma: Union[int, float, list, np.ndarray]=None,
@@ -104,7 +106,7 @@ class MAGMA:
         self.LL_theta0 = -np.inf
         self.LL_Theta_Sigma = -np.inf
 
-        self.set_m0(m0)
+        self.set_m0(m0, m0_function)
         self.set_theta0(theta0)
         self.set_Theta(Theta)
         self.set_Sigma(Sigma)
@@ -135,16 +137,18 @@ class MAGMA:
         self.Y = Y
 
 
-    def set_m0(self, m0: Union[int, float, list, np.ndarray]) -> None:
+    def set_m0(self, m0: Union[int, float, list, np.ndarray], m0_function: Callable) -> None:
         """Set prior mean."""
+        assert isinstance(m0_function, Callable)
         if m0 is None:
-            m0 = np.zeros(self.n_common_T)
+            m0 = m0_function(self.n_common_T)
         elif isinstance(m0, (int, float)):
             m0 = m0 * np.ones(self.n_common_T)
         elif isinstance(m0, (list, tuple)):
             m0 = np.array(m0)
         assert isinstance(m0, np.ndarray) and len(m0) == self.n_common_T
         self.m0 = m0
+        self.m0_function = m0_function
 
 
     def set_theta0(self, theta0: Union[int, float, list, np.ndarray]) -> None:
@@ -200,12 +204,12 @@ class MAGMA:
     def E_step(self):
         """Perform the E-step of the optimization algorithm."""
         K_theta0 = self.kernel_k.compute_all(self.theta0, self.common_T)
-        inv_K_theta0 = sla.pinv(K_theta0)
+        inv_K_theta0 = scipy.linalg.pinv(K_theta0)
 
         if self.common_hp_flag:
             C_Theta = self.kernel_c.compute_all(self.Theta, self.common_T)
             Psi_Theta_Sigma = C_Theta + self.Sigma * np.identity(self.n_common_T)
-            inv_Psi_Theta_Sigma = sla.pinv(Psi_Theta_Sigma)
+            inv_Psi_Theta_Sigma = scipy.linalg.pinv(Psi_Theta_Sigma)
             inv_Psi_Theta_Sigma_dot_Y = ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0)
 
         else:
@@ -216,7 +220,7 @@ class MAGMA:
             for i in range(self.n_individuals):
                 C_Theta_i = self.kernel_c.compute_all(self.Theta[i], self.common_T)
                 Psi_Theta_Sigma_i = C_Theta_i + self.Sigma[i] * np.identity(self.n_common_T)
-                inv_Psi_Theta_Sigma_i = sla.pinv(Psi_Theta_Sigma_i)
+                inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i)
                 inv_Psi_Theta_Sigma_dot_Y += inv_Psi_Theta_Sigma_i.dot(self.Y[i])
                 
                 Psi_Theta_Sigma.append(Psi_Theta_Sigma_i)
@@ -225,13 +229,19 @@ class MAGMA:
             Psi_Theta_Sigma = np.array(Psi_Theta_Sigma)
             inv_Psi_Theta_Sigma = np.array(inv_Psi_Theta_Sigma)
 
-        self.K = sla.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
+        self.K_theta0 = K_theta0
+        self.inv_K_theta0 = inv_K_theta0
+        self.Psi_Theta_Sigma = Psi_Theta_Sigma
+        self.inv_Psi_Theta_Sigma = inv_Psi_Theta_Sigma
+
+        self.K = scipy.linalg.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
         self.m0_estim = (self.K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
 
 
     def M_step(self):
         """Perform the M-step of the optimization algorithm."""
         if self.scipy_optimize_display:
+            print("=" * 100)
             print("theta0")
 
         theta0 = scipy.optimize.minimize(
@@ -245,7 +255,7 @@ class MAGMA:
 
         if self.common_hp_flag:
             if self.scipy_optimize_display:
-                print("=========================================")
+                print("=" * 100)
                 print("Theta & Sigma")
 
             Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
@@ -265,7 +275,7 @@ class MAGMA:
 
             for i in range(self.n_individuals):
                 if self.scipy_optimize_display:
-                    print("=========================================")
+                    print("=" * 100)
                     print(f"Theta & Sigma {i}")
 
                 Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
@@ -317,3 +327,49 @@ class MAGMA:
             self.save_history()
             if ((self.LL_theta0 + self.LL_Theta_Sigma) - LL) ** 2 < eps:
                 break
+
+    
+    def _predict_posterior_inference(self, Tp: np.ndarray=None, Yp: np.ndarray=None):
+        assert Yp is not None
+
+        use_common_T_flag = True
+        if Tp is not None:
+            use_common_T_flag = len(self.common_T) == len(Tp) and np.allclose(self.common_T, Tp)
+
+        if use_common_T_flag:
+            assert len(self.common_T) == len(Yp)
+            m0_p = self.m0
+            K_theta0_p = self.K_theta0
+            inv_K_theta0_p = self.inv_K_theta0
+            Psi_Theta_Sigma_p = self.Psi_Theta_Sigma
+            inv_Psi_Theta_Sigma_p = self.inv_Psi_Theta_Sigma
+            Y_common_p = self.Y
+
+        else:
+            assert Tp is not None
+            assert len(Tp) == len(Yp)
+
+            m0_Tp = self.m0_function(Tp)
+
+            intersect_T = np.intersect1d(self.common_T, Tp)
+
+            index_T = []
+            # TODO
+
+        inv_Psi_Theta_Sigma_dot_Y_common_p = 0
+        if self.common_hp_flag:
+            inv_Psi_Theta_Sigma_dot_Y_common_p = ((Y_common_p).dot(inv_Psi_Theta_Sigma_p)).sum(axis=0)
+        else:
+            for i in range(self.n_individuals):
+                inv_Psi_Theta_Sigma_dot_Y_common_p += inv_Psi_Theta_Sigma_p[i].dot(Y_common_p[i])
+
+        K_p = scipy.linalg.pinv(inv_K_theta0_p + inv_Psi_Theta_Sigma_p.sum(axis=0))
+        m0_estim_p = (K_p).dot(inv_K_theta0_p.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y_common_p)
+
+        return K_p, m0_estim_p
+
+
+    def predict(self, Tp: np.ndarray, Yp: np.ndarray) -> np.ndarray:
+        """Predict the output of a new individual."""
+        K_p, m0_estim_p = self._predict_posterior_inference(Tp, Yp) 
+        # TODO:
