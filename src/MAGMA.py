@@ -6,7 +6,9 @@ from typing import *
 
 from kernels import (Kernel, 
                     ExponentiatedQuadraticKernel)
-from utils import (log_likelihood_theta0, 
+from utils import (compute_inv_K_theta0,
+                   compute_inv_Psi_individual_i,
+                   log_likelihood_theta0, 
                    log_likelihood_Theta_Sigma_Common_HP,
                    log_likelihood_Theta_Sigma_i_Different_HP,
                    concatenate_Theta_Sigma_i,
@@ -37,7 +39,8 @@ class MAGMA:
         T (np.ndarray): Time points for each individual.
         Y (np.ndarray): Observations for each individual.
         n_individuals (int): Number of individuals.
-        common_hp_flag (bool): True -> common hyperparameters theta and sigma.
+        common_hp_flag (bool): If true, common hyperparameters theta and sigma.
+        common_grid_flag (bool): If true, common times for all individuals.
         save_history_flag (bool): Flag to save optimization history.
         scipy_optimize_display (bool): Flag to display optimization information.
         kernel_k (Kernel): Kernel k_theta0 object.
@@ -61,6 +64,7 @@ class MAGMA:
         set_Sigma: Set noise variance associated with the i-th individual.
         init_history: Initialize optimization history.
         save_history: Save current state to the optimization history.
+        compute_kernels: Calculation of data covariance matrices.
         E_step: Perform the E-step of the optimization algorithm.
         M_step: Perform the M-step of the optimization algorithm.
         compute_log_likelihood: Compute log-likelihood based on the current parameters.
@@ -78,11 +82,19 @@ class MAGMA:
                 Theta: Union[int, float, list, np.ndarray]=None, 
                 Sigma: Union[int, float, list, np.ndarray]=None,
                 common_hp_flag: bool=True,
+                common_grid_flag: bool=True,
                 save_history_flag: bool=False,
                 scipy_optimize_display: bool=False,
                 kernel_k: Kernel=ExponentiatedQuadraticKernel,
                 kernel_c: Kernel=ExponentiatedQuadraticKernel,
         ):
+
+        # Set flags
+        self.common_hp_flag = common_hp_flag
+        self.common_grid_flag = common_grid_flag
+        self.save_history_flag = save_history_flag
+        self.scipy_optimize_display = scipy_optimize_display
+
         # Initialize common time points and individuals' data
         self.set_common_T(common_T, T)
         self.n_common_T = len(self.common_T)
@@ -90,11 +102,6 @@ class MAGMA:
         # Initialize time points and observations
         self.set_TY(T, Y)  # self.T, self.Y
         self.n_individuals = len(self.Y)
-
-        # Set flags and parameters
-        self.common_hp_flag = common_hp_flag
-        self.save_history_flag = save_history_flag
-        self.scipy_optimize_display = scipy_optimize_display
 
         # Initialize kernels
         self.kernel_k = kernel_k
@@ -117,24 +124,52 @@ class MAGMA:
         """Set common time points."""
         if common_T is not None:
             self.common_T = common_T
+            
         else:
             assert T is not None
-            all_ti = []
-            for t in T: all_ti.extend(list(t))
-            self.common_T = np.unique(all_ti)
+
+            if self.common_grid_flag:
+                self.common_T = T[0]
+            else:
+                all_ti = []
+                for t in T: all_ti.extend(list(t))
+                self.common_T = np.unique(all_ti)
 
     
     def set_TY(self, T: Union[np.ndarray, list[np.ndarray]], Y: Union[np.ndarray, list[np.ndarray]]) -> None:
         """Set time points and observations."""
         if T is None:
+            self.common_grid_flag = True
             assert self.common_T is not None
-            T = np.tile(self.common_T, (len(Y), 1))
 
-        for (t, y) in zip(T, Y):
-            assert len(t) == len(y)
+        T_masks = None
+        Y_normalized = None
+
+        if self.common_grid_flag:
+            T = None
+            for i, y in enumerate(Y): 
+                assert len(y) == self.n_common_T, f"Indivual {i}"
+            Y_normalized = Y
+
+        else:
+            assert T is not None
+            assert len(T) == len(Y)
+            for i, (t, y) in enumerate(zip(T, Y)):
+                assert len(t) == len(y), f"Indivual {i}"
+
+            n_individuals = len(Y)
+            T_masks = np.zeros((n_individuals, self.n_common_T))
+            Y_normalized = np.zeros((n_individuals, self.n_individuals))
+            for i in range(n_individuals):
+                mask = np.isin(self.common_T, T[i])
+                T_masks[i] = mask
+                # TODO 
+                Y_normalized = None
 
         self.T = T
         self.Y = Y
+        self.T_masks = T_masks
+        self.Y_normalized = Y_normalized
 
 
     def set_m0(self, m0: Union[int, float, list, np.ndarray], m0_function: Callable) -> None:
@@ -201,41 +236,54 @@ class MAGMA:
             })
 
 
+    def get_individual(self, i: int) -> tuple:
+        """Return input and output of i-th individual"""
+        assert 0 <= i < self.n_individuals
+        if self.common_grid_flag:
+            return self.common_T, self.Y[i], None, None
+        return self.T[i], self.Y[i], self.T_masks[i], self.Y_normalized[i]
+
+
     def E_step(self):
         """Perform the E-step of the optimization algorithm."""
-        K_theta0 = self.kernel_k.compute_all(self.theta0, self.common_T)
-        inv_K_theta0 = scipy.linalg.pinv(K_theta0)
+        K = None
+        m0_estim = None
 
-        if self.common_hp_flag:
-            C_Theta = self.kernel_c.compute_all(self.Theta, self.common_T)
-            Psi_Theta_Sigma = C_Theta + self.Sigma * np.identity(self.n_common_T)
-            inv_Psi_Theta_Sigma = scipy.linalg.pinv(Psi_Theta_Sigma)
-            inv_Psi_Theta_Sigma_dot_Y = ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0)
+        _, inv_K_theta0 = compute_inv_K_theta0(self.kernel_k, self.theta0, self.common_T)
+
+        if self.common_hp_flag and self.common_grid_flag:
+            _, inv_Psi_Theta_Sigma = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, self.common_T, None)
+            K = scipy.linalg.pinv(inv_K_theta0 + self.n_individuals * inv_Psi_Theta_Sigma)
+            m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0))
 
         else:
-            Psi_Theta_Sigma = []
-            inv_Psi_Theta_Sigma = []
             inv_Psi_Theta_Sigma_dot_Y = 0
+            inv_Psi_Theta_Sigma = []
+
+            if self.common_hp_flag: 
+                Theta, sigma = self.Theta, self.Sigma
 
             for i in range(self.n_individuals):
-                C_Theta_i = self.kernel_c.compute_all(self.Theta[i], self.common_T)
-                Psi_Theta_Sigma_i = C_Theta_i + self.Sigma[i] * np.identity(self.n_common_T)
-                inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i)
-                inv_Psi_Theta_Sigma_dot_Y += inv_Psi_Theta_Sigma_i.dot(self.Y[i])
                 
-                Psi_Theta_Sigma.append(Psi_Theta_Sigma_i)
+                if not self.common_hp_flag: 
+                    Theta, sigma = self.Theta[i], self.Sigma[i]
+                
+                if self.common_grid_flag: 
+                    mask, Yi = None, self.Y[i]
+                else: 
+                    _, _, mask, Yi = self.get_individual(i)
+
+                _, inv_Psi_Theta_Sigma_i = compute_inv_Psi_individual_i(self.kernel_c, Theta, sigma, self.common_T, mask)
+                inv_Psi_Theta_Sigma_dot_Y += inv_Psi_Theta_Sigma_i.dot(Yi)
                 inv_Psi_Theta_Sigma.append(inv_Psi_Theta_Sigma_i)
 
-            Psi_Theta_Sigma = np.array(Psi_Theta_Sigma)
             inv_Psi_Theta_Sigma = np.array(inv_Psi_Theta_Sigma)
 
-        self.K_theta0 = K_theta0
-        self.inv_K_theta0 = inv_K_theta0
-        self.Psi_Theta_Sigma = Psi_Theta_Sigma
-        self.inv_Psi_Theta_Sigma = inv_Psi_Theta_Sigma
+            K = scipy.linalg.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
+            m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
 
-        self.K = scipy.linalg.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
-        self.m0_estim = (self.K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
+        self.K = K
+        self.m0_estim = m0_estim
 
 
     def M_step(self):
@@ -245,7 +293,8 @@ class MAGMA:
             print("theta0")
 
         theta0 = scipy.optimize.minimize(
-            fun=lambda x: log_likelihood_theta0(x, self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K, 
+            fun=lambda x: log_likelihood_theta0(x, self.kernel_k, self.common_T, 
+                                                self.m0, self.m0_estim, self.K, 
                                                 minimize=True, derivative=True),
             jac=True,
             x0=self.theta0,
@@ -260,7 +309,8 @@ class MAGMA:
 
             Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
             Theta_Sigma = scipy.optimize.minimize(
-                fun=lambda x: log_likelihood_Theta_Sigma_Common_HP(x, self.kernel_c, self.common_T, self.T, self.Y, 
+                fun=lambda x: log_likelihood_Theta_Sigma_Common_HP(x, self.kernel_c, self.common_T, 
+                                                                  self.T_masks, self.Y_normalized, 
                                                                   self.m0_estim, self.K, minimize=True, derivative=True), 
                 jac=True,
                 x0=Theta_Sigma0,
@@ -279,9 +329,11 @@ class MAGMA:
                     print(f"Theta & Sigma {i}")
 
                 Theta_Sigma0 = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
+                Ti_mask = None if self.T_masks is None else self.T_masks[i]
                 Theta_Sigma_i = scipy.optimize.minimize(
                     fun=lambda x: log_likelihood_Theta_Sigma_i_Different_HP(x, self.kernel_c, self.common_T, 
-                                                                            self.T[i], self.Y[i], self.m0_estim, self.K, 
+                                                                            Ti_mask, self.Y_normalized[i], 
+                                                                            self.m0_estim, self.K, 
                                                                             minimize=True, derivative=True), 
                     jac=True,
                     x0=Theta_Sigma0,
@@ -299,18 +351,23 @@ class MAGMA:
 
     def compute_log_likelihood(self):
         """Compute log-likelihood based on the current parameters."""
-        LL_theta0 = log_likelihood_theta0(self.theta0, self.kernel_k, self.common_T, self.m0, self.m0_estim, self.K, 
+        LL_theta0 = log_likelihood_theta0(self.theta0, self.kernel_k, self.common_T, 
+                                          self.m0, self.m0_estim, self.K, 
                                           minimize=False, derivative=False)
         LL_Theta_Sigma = 0
         if self.common_hp_flag:
             Theta_Sigma = concatenate_Theta_Sigma_i(self.Theta, self.Sigma)
-            LL_Theta_Sigma = log_likelihood_Theta_Sigma_Common_HP(Theta_Sigma, self.kernel_c, self.common_T, self.T, self.Y,
-                                                                  self.m0_estim, self.K, minimize=False, derivative=False)
+            LL_Theta_Sigma = log_likelihood_Theta_Sigma_Common_HP(Theta_Sigma, self.kernel_c, self.common_T, 
+                                                                  self.T_masks, self.Y_normalized,
+                                                                  self.m0_estim, self.K, 
+                                                                  minimize=False, derivative=False)
         else:
             for i in range(self.n_individuals):
                 Theta_Sigma_i = concatenate_Theta_Sigma_i(self.Theta[i], self.Sigma[i])
+                Ti_mask = None if self.T_masks is None else self.T_masks[i]
                 LL_Theta_Sigma += log_likelihood_Theta_Sigma_i_Different_HP(Theta_Sigma_i, self.kernel_c, self.common_T,
-                                                                            self.T[i], self.Y[i], self.m0_estim, self.K,
+                                                                            Ti_mask, self.Y_normalized[i], 
+                                                                            self.m0_estim, self.K,
                                                                             minimize=False, derivative=False)
         
         self.LL_theta0 = LL_theta0
@@ -329,42 +386,54 @@ class MAGMA:
                 break
 
     
-    def _predict_posterior_inference(self, Tp: np.ndarray=None, Yp: np.ndarray=None):
+    def _predict_posterior_inference(self, Tp: np.ndarray=None, Yp: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
         assert Yp is not None
 
-        use_common_T_flag = True
-        if Tp is not None:
-            use_common_T_flag = len(self.common_T) == len(Tp) and np.allclose(self.common_T, Tp)
+        if Tp is None:
+            Tp = self.common_T
 
-        if use_common_T_flag:
-            assert len(self.common_T) == len(Yp)
-            m0_p = self.m0
-            K_theta0_p = self.K_theta0
-            inv_K_theta0_p = self.inv_K_theta0
-            Psi_Theta_Sigma_p = self.Psi_Theta_Sigma
-            inv_Psi_Theta_Sigma_p = self.inv_Psi_Theta_Sigma
-            Y_common_p = self.Y
+        assert Tp is not None
+        assert len(Tp) == len(Yp)
+
+        K_p = None
+        m0_estim_p = None
+
+        m0_p = self.m0_function(Tp)
+        _, inv_K_theta0_p = compute_inv_K_theta0(self.kernel_k, self.theta0, Tp)
+
+        if self.common_hp_flag and self.common_grid_flag:
+            mask_p = np.isin(Tp, self.common_T)
+            Y_mask_p = mask_p * Yp
+            _, inv_Psi_Theta_Sigma_p = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, Tp, mask_p)
+            K_p = scipy.linalg.pinv(inv_K_theta0_p + self.n_individuals * inv_Psi_Theta_Sigma_p)
+            m0_estim_p = (K_p).dot(inv_K_theta0_p.dot(m0_p) + self.n_individuals * inv_Psi_Theta_Sigma_p.dot(Y_mask_p))
 
         else:
-            assert Tp is not None
-            assert len(Tp) == len(Yp)
+            inv_Psi_Theta_Sigma_dot_Yp = 0
+            inv_Psi_Theta_Sigma_p = []
 
-            m0_Tp = self.m0_function(Tp)
+            if self.common_hp_flag: 
+                Theta, sigma = self.Theta, self.Sigma
+            if self.common_grid_flag: 
+                mask_p = np.isin(Tp, self.common_T)
+                Y_mask_p = mask_p * Yp
 
-            intersect_T = np.intersect1d(self.common_T, Tp)
-
-            index_T = []
-            # TODO
-
-        inv_Psi_Theta_Sigma_dot_Y_common_p = 0
-        if self.common_hp_flag:
-            inv_Psi_Theta_Sigma_dot_Y_common_p = ((Y_common_p).dot(inv_Psi_Theta_Sigma_p)).sum(axis=0)
-        else:
             for i in range(self.n_individuals):
-                inv_Psi_Theta_Sigma_dot_Y_common_p += inv_Psi_Theta_Sigma_p[i].dot(Y_common_p[i])
 
-        K_p = scipy.linalg.pinv(inv_K_theta0_p + inv_Psi_Theta_Sigma_p.sum(axis=0))
-        m0_estim_p = (K_p).dot(inv_K_theta0_p.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y_common_p)
+                if not self.common_hp_flag: 
+                    Theta, sigma = self.Theta[i], self.Sigma[i]
+                if not self.common_grid_flag: 
+                    mask_p = np.isin(Tp, self.T[i])
+                    Y_mask_p = mask_p * Yp
+
+                _, inv_Psi_Theta_Sigma_p_i = compute_inv_Psi_individual_i(self.kernel_c, Theta, sigma, Tp, mask_p)
+                inv_Psi_Theta_Sigma_dot_Yp += inv_Psi_Theta_Sigma_p_i.dot(Y_mask_p)
+                inv_Psi_Theta_Sigma_p.append(inv_Psi_Theta_Sigma_p_i)
+
+            inv_Psi_Theta_Sigma_p = np.array(inv_Psi_Theta_Sigma_p)
+
+            K_p = scipy.linalg.pinv(inv_K_theta0_p + inv_Psi_Theta_Sigma_p.sum(axis=0))
+            m0_estim_p = (K_p).dot(inv_K_theta0_p.dot(m0_p) + inv_Psi_Theta_Sigma_dot_Yp)
 
         return K_p, m0_estim_p
 
