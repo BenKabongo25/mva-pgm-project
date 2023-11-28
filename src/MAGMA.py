@@ -123,7 +123,7 @@ class MAGMA:
     def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list[np.ndarray]]=None) -> None: 
         """Set common time points."""
         if common_T is not None:
-            self.common_T = common_T
+            self.common_T = common_T # sorted common_T
             
         else:
             assert T is not None
@@ -159,12 +159,18 @@ class MAGMA:
 
             n_individuals = len(Y)
             T_masks = np.zeros((n_individuals, self.n_common_T))
-            Y_normalized = np.zeros((n_individuals, self.n_individuals))
+            Y_normalized = np.zeros((n_individuals, self.n_common_T))
+
             for i in range(n_individuals):
-                mask = np.isin(self.common_T, T[i])
+                Yi_sorted = Y[i][np.argsort(T[i])]
+                Ti_sorted = np.sort(T[i])
+
+                mask = np.isin(self.common_T, Ti_sorted)
+                Yi_normalized = np.zeros(self.n_common_T)
+                Yi_normalized[np.where(mask)[0]] = Yi_sorted
+
                 T_masks[i] = mask
-                # TODO 
-                Y_normalized = None
+                Y_normalized[i] = Yi_normalized
 
         self.T = T
         self.Y = Y
@@ -386,59 +392,88 @@ class MAGMA:
                 break
 
     
-    def _predict_posterior_inference(self, Tp: np.ndarray=None, Yp: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
-        assert Yp is not None
+    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
+        assert T_new is not None
 
-        if Tp is None:
-            Tp = self.common_T
+        K_new = None
+        m0_estim_new = None
 
-        assert Tp is not None
-        assert len(Tp) == len(Yp)
+        m0_new = self.m0_function(T_new)
+        _, inv_K_theta0_new = compute_inv_K_theta0(self.kernel_k, self.theta0, T_new)
 
-        K_p = None
-        m0_estim_p = None
-
-        m0_p = self.m0_function(Tp)
-        _, inv_K_theta0_p = compute_inv_K_theta0(self.kernel_k, self.theta0, Tp)
+        ## TODO: The code is wrong. Modify and adapt according to the "predict" section of the paper
+        # 
 
         if self.common_hp_flag and self.common_grid_flag:
-            mask_p = np.isin(Tp, self.common_T)
-            Y_mask_p = mask_p * Yp
-            _, inv_Psi_Theta_Sigma_p = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, Tp, mask_p)
-            K_p = scipy.linalg.pinv(inv_K_theta0_p + self.n_individuals * inv_Psi_Theta_Sigma_p)
-            m0_estim_p = (K_p).dot(inv_K_theta0_p.dot(m0_p) + self.n_individuals * inv_Psi_Theta_Sigma_p.dot(Y_mask_p))
+            mask_new = np.isin(T_new, self.common_T)
+            ## BLA BLA 
+            # TODO:
+            Y_mask_new = mask_new * Yp
+            _, inv_Psi_Theta_Sigma_new = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, Tp, mask_new)
+            K_new = scipy.linalg.pinv(inv_K_theta0_new + self.n_individuals * inv_Psi_Theta_Sigma_new)
+            m0_estim_new = (K_new).dot(inv_K_theta0_new.dot(m0_new) + self.n_individuals * inv_Psi_Theta_Sigma_new.dot(Y_mask_new))
 
         else:
+            # TODO:
             inv_Psi_Theta_Sigma_dot_Yp = 0
-            inv_Psi_Theta_Sigma_p = []
+            inv_Psi_Theta_Sigma_new = []
 
             if self.common_hp_flag: 
                 Theta, sigma = self.Theta, self.Sigma
             if self.common_grid_flag: 
-                mask_p = np.isin(Tp, self.common_T)
-                Y_mask_p = mask_p * Yp
+                mask_new = np.isin(Tp, self.common_T)
+                Y_mask_new = mask_new * Yp
 
             for i in range(self.n_individuals):
 
                 if not self.common_hp_flag: 
                     Theta, sigma = self.Theta[i], self.Sigma[i]
                 if not self.common_grid_flag: 
-                    mask_p = np.isin(Tp, self.T[i])
-                    Y_mask_p = mask_p * Yp
+                    mask_new = np.isin(Tp, self.T[i])
+                    Y_mask_new = mask_new * Yp
 
-                _, inv_Psi_Theta_Sigma_p_i = compute_inv_Psi_individual_i(self.kernel_c, Theta, sigma, Tp, mask_p)
-                inv_Psi_Theta_Sigma_dot_Yp += inv_Psi_Theta_Sigma_p_i.dot(Y_mask_p)
-                inv_Psi_Theta_Sigma_p.append(inv_Psi_Theta_Sigma_p_i)
+                _, inv_Psi_Theta_Sigma_new_i = compute_inv_Psi_individual_i(self.kernel_c, Theta, sigma, Tp, mask_new)
+                inv_Psi_Theta_Sigma_dot_Yp += inv_Psi_Theta_Sigma_new_i.dot(Y_mask_new)
+                inv_Psi_Theta_Sigma_new.append(inv_Psi_Theta_Sigma_new_i)
 
-            inv_Psi_Theta_Sigma_p = np.array(inv_Psi_Theta_Sigma_p)
+            inv_Psi_Theta_Sigma_new = np.array(inv_Psi_Theta_Sigma_new)
 
-            K_p = scipy.linalg.pinv(inv_K_theta0_p + inv_Psi_Theta_Sigma_p.sum(axis=0))
-            m0_estim_p = (K_p).dot(inv_K_theta0_p.dot(m0_p) + inv_Psi_Theta_Sigma_dot_Yp)
+            K_new = scipy.linalg.pinv(inv_K_theta0_new + inv_Psi_Theta_Sigma_new.sum(axis=0))
+            m0_estim_new = (K_new).dot(inv_K_theta0_new.dot(m0_new) + inv_Psi_Theta_Sigma_dot_Yp)
 
-        return K_p, m0_estim_p
+        return K_new, m0_estim_new
 
 
-    def predict(self, Tp: np.ndarray, Yp: np.ndarray) -> np.ndarray:
+    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list[np.ndarray, float]:
+        if self.common_hp_flag:
+            return self.Theta, self.Sigma
+        
+        i = np.random.randint(0, self.n_individuals - 1)
+        Theta = self.Theta[i]
+        Sigma = self.Sigma[i]
+        Theta_Sigma0 = concatenate_Theta_Sigma_i(Theta, Sigma)
+        Theta_Sigma = scipy.optimize.minimize(
+            fun=None, # TODO
+            jac=True,
+            x0=Theta_Sigma0,
+            method="L-BFGS-B",
+            options={"disp": self.scipy_optimize_display}
+        ).x
+        Theta, Sigma = retrieve_Theta_Sigma_i(Theta_Sigma)
+        return Theta, Sigma
+
+
+    def predict(self, T_p: np.ndarray, Y_p: np.ndarray=None, T_obs: np.ndarray=None, Y_obs: np.ndarray=None) -> np.ndarray:
         """Predict the output of a new individual."""
-        K_p, m0_estim_p = self._predict_posterior_inference(Tp, Yp) 
-        # TODO:
+        assert T_p is not None
+        T_p_obs = T_p
+        if T_obs is not None:
+            T_p_obs = np.concatenate([T_p, T_obs])
+
+        if len(T_p_obs) == len(self.common_T) and np.allclose(T_p_obs, self.common_T):
+            K_p, m0_estim_p = self.K.copy(), self.m0_estim.copy()
+        else:
+            K_p, m0_estim_p = self._predict_posterior_inference(T_p_obs) 
+
+
+        # TODO: 
