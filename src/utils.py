@@ -21,8 +21,8 @@ def compute_inv_K_theta0(
         kernel_k: Kernel, 
         theta0: Union[int, float, list, np.ndarray], 
         T: Union[list, np.ndarray]) -> list[np.ndarray, np.ndarray]:
-    K_theta0 = kernel_k.compute_all(theta0, T)
-    inv_K_theta0 = scipy.linalg.pinv(K_theta0)
+    K_theta0 = kernel_k.compute_all(theta0, T) + 1e-6 * np.identity(len(T))
+    inv_K_theta0 = scipy.linalg.pinv(K_theta0) + 1e-6 * np.identity(len(T))
     return K_theta0, inv_K_theta0
 
     
@@ -35,8 +35,8 @@ def compute_inv_Psi_individual_i(
     C_Theta_i = kernel_c.compute_all(Theta, Ti)
     Psi_Theta_Sigma_i = C_Theta_i + sigma * np.identity(len(Ti))
     if mask is not None:
-        Psi_Theta_Sigma_i = mask_square(mask) * Psi_Theta_Sigma_i
-    inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i)
+        Psi_Theta_Sigma_i = mask_square(mask) * Psi_Theta_Sigma_i + 1e-6 * np.identity(len(Ti))
+    inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i) + 1e-6 * np.identity(len(Ti))
     return Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i
 
 
