@@ -122,7 +122,7 @@ def retrieve_Theta_Sigma_i(Theta_Sigma_i: np.ndarray) -> list[Union[int, float, 
     """
     Theta = Theta_Sigma_i[:-1]
     Sigma = Theta_Sigma_i[-1]
-    Sigma = Sigma + 1e-6
+    Sigma = Sigma + 1e-6 if isinstance(Sigma, float) else Sigma + 1e-6 * np.identity(len(Sigma))
     return Theta, Sigma
 
 
@@ -139,7 +139,7 @@ def _log_likelihood(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, inv_Sigma:
     Returns:
         float: Log-likelihood value.
     """
-    return multivariate_normal_density(x, mu, Sigma, inv_Sigma, log=True) - 0.5 * np.trace(K_estim @ inv_Sigma)
+    return multivariate_normal_density(x, mu, Sigma, inv_Sigma, log=True) - 0.5 * np.trace(K_estim.dot(inv_Sigma))
 
 
 def log_likelihood_theta0(
