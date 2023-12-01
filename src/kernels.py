@@ -87,7 +87,7 @@ class ExponentiatedQuadraticKernel(Kernel):
         XX_diff_square = (XX - YY) ** 2
         exp_XX_diff_square = np.exp(- XX_diff_square / (2 * (_l ** 2)) )
         d_v = 2 * _v * exp_XX_diff_square
-        d_l = - (_v ** 2) / (_l ** 3) * XX_diff_square * exp_XX_diff_square
+        d_l = (_v ** 2) / (_l ** 3) * XX_diff_square * exp_XX_diff_square
         d_v, d_l = d_v[np.newaxis, :], d_l[np.newaxis, :]
         return np.concatenate([d_v, d_l])
 

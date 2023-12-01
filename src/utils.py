@@ -180,7 +180,7 @@ def log_likelihood_theta0(
     for i in range(len(theta0)):
         d_theta0[i] = (d_K_theta0 * d_theta0_of_K_theta0[i]).sum()
 
-    return LL_theta0, d_theta0
+    return LL_theta0, factor * d_theta0
 
 
 def log_likelihood_Theta_Sigma_Common_HP(
