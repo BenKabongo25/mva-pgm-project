@@ -6,7 +6,7 @@ from typing import *
 
 from kernels import (Kernel, 
                     ExponentiatedQuadraticKernel)
-from utils import (compute_inv_K_theta0,
+from utilsfixed import (compute_inv_K_theta0,
                    compute_inv_Psi_individual_i,
                    log_likelihood_theta0, 
                    log_likelihood_Theta_Sigma_Common_HP,
@@ -259,7 +259,7 @@ class MAGMA:
 
         if self.common_hp_flag and self.common_grid_flag:
             _, inv_Psi_Theta_Sigma = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, self.common_T, None)
-            K = scipy.linalg.pinv(inv_K_theta0 + self.n_individuals * inv_Psi_Theta_Sigma)
+            K = scipy.linalg.pinv(inv_K_theta0 + self.n_individuals * inv_Psi_Theta_Sigma) + 1e-6 * np.eye(self.n_common_T)
             m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0))
 
         else:
