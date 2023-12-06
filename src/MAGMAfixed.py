@@ -73,8 +73,8 @@ class MAGMA:
     """
 
     def __init__(self,
-                T: Union[np.ndarray, list[np.ndarray]],
-                Y: Union[np.ndarray, list[np.ndarray]],
+                T: Union[np.ndarray, list],
+                Y: Union[np.ndarray, list],
                 common_T: Union[list, np.ndarray]=None,
                 m0: Union[int, float, list, np.ndarray]=None, 
                 m0_function: Callable=None,
@@ -119,8 +119,7 @@ class MAGMA:
         self.set_Sigma(Sigma)
         self.init_history()
 
-
-    def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list[np.ndarray]]=None) -> None: 
+    def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list]=None) -> None: 
         """Set common time points."""
         if common_T is not None:
             self.common_T = common_T # sorted common_T
@@ -136,7 +135,7 @@ class MAGMA:
                 self.common_T = np.unique(all_ti)
 
     
-    def set_TY(self, T: Union[np.ndarray, list[np.ndarray]], Y: Union[np.ndarray, list[np.ndarray]]) -> None:
+    def set_TY(self, T: Union[np.ndarray, list], Y: Union[np.ndarray, list]) -> None:
         """Set time points and observations."""
         if T is None:
             self.common_grid_flag = True
@@ -168,7 +167,6 @@ class MAGMA:
                 mask = np.isin(self.common_T, Ti_sorted)
                 Yi_normalized = np.zeros(self.n_common_T)
                 Yi_normalized[np.where(mask)[0]] = Yi_sorted
-
                 T_masks[i] = mask
                 Y_normalized[i] = Yi_normalized
 
@@ -284,7 +282,7 @@ class MAGMA:
                 inv_Psi_Theta_Sigma.append(inv_Psi_Theta_Sigma_i)
 
             inv_Psi_Theta_Sigma = np.array(inv_Psi_Theta_Sigma)
-
+            
             K = scipy.linalg.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
             m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
 
@@ -392,7 +390,7 @@ class MAGMA:
                 break
 
     
-    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
+    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list:
         assert T_new is not None
 
         K_new = None
@@ -444,7 +442,7 @@ class MAGMA:
         return K_new, m0_estim_new
 
 
-    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list[np.ndarray, float]:
+    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list:
         if self.common_hp_flag:
             return self.Theta, self.Sigma
         

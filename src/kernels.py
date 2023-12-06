@@ -2,7 +2,7 @@ import numpy as np
 from typing import Union
 
 
-def make_grids(X: Union[list, np.ndarray]) -> list[np.ndarray, np.ndarray]:
+def make_grids(X: Union[list, np.ndarray]) -> list:
     """
     Generate mesh grids from input points.
 
@@ -68,7 +68,7 @@ class ExponentiatedQuadraticKernel(Kernel):
         derivate_parameters: Compute the derivative of parameters.
     """
 
-    def update_parameters(self, parameters: Union[np.ndarray, list[float, float]] = None):
+    def update_parameters(self, parameters: Union[np.ndarray, list] = None):
         """
         Update kernel parameters.
 
@@ -101,7 +101,7 @@ class ExponentiatedQuadraticKernel(Kernel):
         return np.random.random(2)
 
     @classmethod
-    def _check_parameters(cls, parameters: Union[np.ndarray, list[float, float]]):
+    def _check_parameters(cls, parameters: Union[np.ndarray, list]):
         """
         Check and extract kernel parameters.
 
@@ -142,7 +142,7 @@ class ExponentiatedQuadraticKernel(Kernel):
 
     @classmethod
     def compute(cls,
-                parameters: Union[np.ndarray, list[float, float]],
+                parameters: Union[np.ndarray, list],
                 x: Union[int, float, np.ndarray],
                 y: Union[int, float, np.ndarray]
                 ) -> Union[float, np.ndarray]:
@@ -162,7 +162,7 @@ class ExponentiatedQuadraticKernel(Kernel):
 
     @classmethod
     def compute_all(cls,
-                    parameters: Union[np.ndarray, list[float, float]],
+                    parameters: Union[np.ndarray, list],
                     X: Union[list, np.ndarray]
                     ) -> np.ndarray:
         """
@@ -180,7 +180,7 @@ class ExponentiatedQuadraticKernel(Kernel):
 
     @classmethod
     def derivate_parameters(cls,
-                            parameters: Union[np.ndarray, list[float, float]],
+                            parameters: Union[np.ndarray, list],
                             X: Union[list, np.ndarray]
                             ) -> np.ndarray:
         """
