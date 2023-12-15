@@ -147,14 +147,14 @@ class MAGMA:
         if self.common_grid_flag:
             T = None
             for i, y in enumerate(Y): 
-                assert len(y) == self.n_common_T, f"Indivual {i}"
+                assert len(y) == self.n_common_T, f"Individual {i}"
             Y_normalized = Y
 
         else:
             assert T is not None
             assert len(T) == len(Y)
             for i, (t, y) in enumerate(zip(T, Y)):
-                assert len(t) == len(y), f"Indivual {i}"
+                assert len(t) == len(y), f"Individual {i}"
 
             n_individuals = len(Y)
             T_masks = np.zeros((n_individuals, self.n_common_T))
