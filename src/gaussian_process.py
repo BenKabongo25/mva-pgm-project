@@ -33,7 +33,7 @@ class GaussianProcess:
             raise ValueError("The model must be trained before making predictions.")
 
         n = len(self.T)
-        all_T = np.concatenate(self.T, T_p)
+        all_T = np.concatenate([self.T, T_p])
         Sigma, _ = compute_inv_K_theta0(self.kernel, self.theta, all_T)
 
         K_star = Sigma[:n, n:]

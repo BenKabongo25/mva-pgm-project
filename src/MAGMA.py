@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 import scipy.linalg
 import scipy.optimize
 from tqdm import tqdm
@@ -240,6 +241,18 @@ class MAGMA:
                 "LL_theta0": self.LL_theta0,
                 "LL_Theta_Sigma": self.LL_Theta_Sigma
             })
+
+
+    def save_model(self, model_file) -> None:
+        """Save the model"""
+        with open(model_file, "wb") as f:
+            pickle.dump(self, f)
+
+
+    def load_model(self, model_file):
+        """Load the model"""
+        with open(model_file, "rb") as f:
+            return pickle.load(f)
 
 
     def get_individual(self, i: int) -> tuple:
