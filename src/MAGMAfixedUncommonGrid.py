@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 import scipy.linalg
 import scipy.optimize
 from tqdm import tqdm
@@ -246,6 +247,18 @@ class MAGMA:
             })
 
 
+    def save_model(self, model_file) -> None:
+        """Save the model"""
+        with open(model_file, "wb") as f:
+            pickle.dump(self, f)
+
+
+    def load_model(self, model_file):
+        """Load the model"""
+        with open(model_file, "rb") as f:
+            return pickle.load(f)
+
+
     def get_individual(self, i: int) -> tuple:
         """Return input and output of i-th individual"""
         assert 0 <= i < self.n_individuals
@@ -394,59 +407,55 @@ class MAGMA:
                 break
 
     
-    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list:
+    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
         assert T_new is not None
 
         K_new = None
         m0_estim_new = None
 
+        n_new = len(T_new)
         m0_new = self.m0_function(T_new)
-        _, inv_K_theta0_new = compute_inv_K_theta0(self.kernel_k, self.theta0, T_new)
+        K_theta0_new, inv_K_theta0_new = compute_inv_K_theta0(self.kernel_k, self.theta0, T_new)
 
-        ## TODO: The code is wrong. Modify and adapt according to the "predict" section of the paper
-        # 
+        inv_K_new_acc = inv_K_theta0_new
+        m0_estim_new_acc = inv_K_theta0_new.dot(m0_new)
 
-        if self.common_hp_flag and self.common_grid_flag:
-            mask_new = np.isin(T_new, self.common_T)
-            ## BLA BLA 
-            # TODO:
-            Y_mask_new = mask_new * Yp
-            _, inv_Psi_Theta_Sigma_new = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, Tp, mask_new)
-            K_new = scipy.linalg.pinv(inv_K_theta0_new + self.n_individuals * inv_Psi_Theta_Sigma_new)
-            m0_estim_new = (K_new).dot(inv_K_theta0_new.dot(m0_new) + self.n_individuals * inv_Psi_Theta_Sigma_new.dot(Y_mask_new))
+        if not np.any(np.isin(T_new, self.common_T)):
+            K_new = K_theta0_new
+            m0_estim_new = K_new.dot(m0_estim_new_acc)
+            return K_new, m0_estim_new
 
-        else:
-            # TODO:
-            inv_Psi_Theta_Sigma_dot_Yp = 0
-            inv_Psi_Theta_Sigma_new = []
+        for i in range(self.n_individuals):
+            T_i = self.common_T if self.common_grid_flag else self.T[i]
+            Y_i = self.Y[i] 
+            Theta_i = self.Theta if self.common_hp_flag else self.Theta[i]
+            sigma_i = self.Sigma if self.common_hp_flag else self.Sigma[i]
+            Psi_i, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta_i, sigma_i, T_i, None)
 
-            if self.common_hp_flag: 
-                Theta, sigma = self.Theta, self.Sigma
-            if self.common_grid_flag: 
-                mask_new = np.isin(Tp, self.common_T)
-                Y_mask_new = mask_new * Yp
+            Y_new_i = np.zeros(n_new)
+            Psi_new_i = np.zeros((n_new, n_new))
+            
+            mask_new_i = np.isin(T_new, T_i)
+            mask_i_new = np.isin(T_i, T_new)
+            grid_mask_i_new = np.ix_(mask_i_new, mask_i_new)
+            idx_new_i = np.where(mask_new_i)[0]
+            grid_idx_new_i = np.ix_(idx_new_i, idx_new_i)
+            
+            Y_new_i[idx_new_i] = Y_i[mask_i_new]
+            Psi_new_i[grid_idx_new_i] = Psi_i[grid_mask_i_new]
 
-            for i in range(self.n_individuals):
+            inv_Psi_new_i = scipy.linalg.inv(Psi_new_i)
 
-                if not self.common_hp_flag: 
-                    Theta, sigma = self.Theta[i], self.Sigma[i]
-                if not self.common_grid_flag: 
-                    mask_new = np.isin(Tp, self.T[i])
-                    Y_mask_new = mask_new * Yp
+            inv_K_new_acc += inv_Psi_new_i
+            m0_estim_new_acc += inv_Psi_new_i.dot(Y_new_i)
 
-                _, inv_Psi_Theta_Sigma_new_i = compute_inv_Psi_individual_i(self.kernel_c, Theta, sigma, Tp, mask_new)
-                inv_Psi_Theta_Sigma_dot_Yp += inv_Psi_Theta_Sigma_new_i.dot(Y_mask_new)
-                inv_Psi_Theta_Sigma_new.append(inv_Psi_Theta_Sigma_new_i)
-
-            inv_Psi_Theta_Sigma_new = np.array(inv_Psi_Theta_Sigma_new)
-
-            K_new = scipy.linalg.pinv(inv_K_theta0_new + inv_Psi_Theta_Sigma_new.sum(axis=0))
-            m0_estim_new = (K_new).dot(inv_K_theta0_new.dot(m0_new) + inv_Psi_Theta_Sigma_dot_Yp)
+        K_new = scipy.linalg.inv(inv_K_new_acc)
+        m0_estim_new = K_new.dot(m0_estim_new_acc)
 
         return K_new, m0_estim_new
 
 
-    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list:
+    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list[np.ndarray, float]:
         if self.common_hp_flag:
             return self.Theta, self.Sigma
         
@@ -465,17 +474,45 @@ class MAGMA:
         return Theta, Sigma
 
 
-    def predict(self, T_p: np.ndarray, Y_p: np.ndarray=None, T_obs: np.ndarray=None, Y_obs: np.ndarray=None) -> np.ndarray:
+    def predict(self, T_p: np.ndarray, T_obs: np.ndarray=None, Y_obs: np.ndarray=None) -> np.ndarray:
         """Predict the output of a new individual."""
         assert T_p is not None
+
+        n_p = len(T_p)
+        n_obs = 0
         T_p_obs = T_p
         if T_obs is not None:
+            n_obs = len(T_obs)
             T_p_obs = np.concatenate([T_p, T_obs])
 
+        argsort_p = np.argsort(T_p)
+        argsort_p_obs = np.argsort(T_p_obs)
+        T_p_obs = np.sort(T_p_obs)
+
         if len(T_p_obs) == len(self.common_T) and np.allclose(T_p_obs, self.common_T):
-            K_p, m0_estim_p = self.K.copy(), self.m0_estim.copy()
+            K_p_obs, m0_estim_p_obs = self.K.copy(), self.m0_estim.copy()
         else:
-            K_p, m0_estim_p = self._predict_posterior_inference(T_p_obs) 
+            K_p_obs, m0_estim_p_obs = self._predict_posterior_inference(T_p_obs) 
 
+        Theta, Sigma = self._learn_new_parameters(T_obs, Y_obs)
+        Psi_p_obs, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta, Sigma, T_p_obs, None)
 
-        # TODO: 
+        Rho_p_obs = K_p_obs + Psi_p_obs
+        Rho_p_obs_argsort = np.zeros_like(Rho_p_obs)
+        Rho_p_obs_argsort[np.ix_(argsort_p_obs, argsort_p_obs)] = Rho_p_obs
+        Rho_p       = Rho_p_obs_argsort[:n_p, :n_p]
+        Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:]
+        Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
+        Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
+        inv_Rho_obs = scipy.linalg.inv(Rho_obs)
+
+        m0_estim_p_obs_argsort = np.zeros_like(m0_estim_p_obs)
+        m0_estim_p_obs_argsort[argsort_p_obs] = m0_estim_p_obs
+        m0_estim_p   = m0_estim_p_obs_argsort[:n_p]
+        m0_estim_obs = m0_estim_p_obs_argsort[n_p:]
+        
+        mu0 = m0_estim_p + (Rho_pobs).dot(inv_Rho_obs).dot(Y_obs - m0_estim_obs)
+        Rho = Rho_p - (Rho_pobs).dot(inv_Rho_obs).dot(Rho_obsp)
+
+        return mu0, Rho
+    

@@ -462,13 +462,16 @@ class MAGMA:
     def predict(self, T_p: np.ndarray, T_obs: np.ndarray=None, Y_obs: np.ndarray=None) -> np.ndarray:
         """Predict the output of a new individual."""
         assert T_p is not None
+
+        n_p = len(T_p)
+        n_obs = 0
         T_p_obs = T_p
         if T_obs is not None:
+            n_obs = len(T_obs)
             T_p_obs = np.concatenate([T_p, T_obs])
 
         argsort_p = np.argsort(T_p)
         argsort_p_obs = np.argsort(T_p_obs)
-
         T_p_obs = np.sort(T_p_obs)
 
         if len(T_p_obs) == len(self.common_T) and np.allclose(T_p_obs, self.common_T):
@@ -480,9 +483,21 @@ class MAGMA:
         Psi_p_obs, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta, Sigma, T_p_obs, None)
 
         Rho_p_obs = K_p_obs + Psi_p_obs
-        n_p = len(T_p)
-        n_obs = len(T_obs)
+        Rho_p_obs_argsort = np.zeros_like(Rho_p_obs)
+        Rho_p_obs_argsort[np.ix_(argsort_p_obs, argsort_p_obs)] = Rho_p_obs
+        Rho_p       = Rho_p_obs_argsort[:n_p, :n_p]
+        Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:]
+        Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
+        Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
+        inv_Rho_obs = scipy.linalg.inv(Rho_obs)
 
-        # TODO:
+        m0_estim_p_obs_argsort = np.zeros_like(m0_estim_p_obs)
+        m0_estim_p_obs_argsort[argsort_p_obs] = m0_estim_p_obs
+        m0_estim_p   = m0_estim_p_obs_argsort[:n_p]
+        m0_estim_obs = m0_estim_p_obs_argsort[n_p:]
+        
+        mu0 = m0_estim_p + (Rho_pobs).dot(inv_Rho_obs).dot(Y_obs - m0_estim_obs)
+        Rho = Rho_p - (Rho_pobs).dot(inv_Rho_obs).dot(Rho_obsp)
 
+        return mu0, Rho
     
