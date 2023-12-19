@@ -499,7 +499,7 @@ class MAGMA:
         Rho_p_obs_argsort = np.zeros_like(Rho_p_obs)
         Rho_p_obs_argsort[np.ix_(argsort_p_obs, argsort_p_obs)] = Rho_p_obs
         Rho_p       = Rho_p_obs_argsort[:n_p, :n_p]
-        Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:]
+        Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
         Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
         Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
         inv_Rho_obs = scipy.linalg.inv(Rho_obs)
