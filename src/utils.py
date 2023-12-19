@@ -291,3 +291,11 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
     d_Theta_Sigma = factor * d_Theta_Sigma
 
     return LL_Theta_Sigma, d_Theta_Sigma
+
+
+# TODO:
+def log_likelihood_GP() -> float:
+    K, inv_K = compute_inv_Psi_individual_i(kernel, theta, sigma, T, None)
+    LL = multivariate_normal_density(x, mu, K, inv_K, log=True)
+
+    #TODO:
