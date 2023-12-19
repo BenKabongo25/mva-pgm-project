@@ -433,14 +433,15 @@ class MAGMA:
             
             mask_new_i = np.isin(T_new, T_i)
             mask_i_new = np.isin(T_i, T_new)
+            idx_i_new = np.where(mask_i_new)[0]
             grid_mask_i_new = np.ix_(mask_i_new, mask_i_new)
             idx_new_i = np.where(mask_new_i)[0]
             grid_idx_new_i = np.ix_(idx_new_i, idx_new_i)
             
-            Y_new_i[idx_new_i] = Y_i[mask_i_new]
+            Y_new_i[idx_new_i] = Y_i[idx_i_new]
             Psi_new_i[grid_idx_new_i] = Psi_i[grid_mask_i_new]
 
-            inv_Psi_new_i = scipy.linalg.inv(Psi_new_i)
+            inv_Psi_new_i = scipy.linalg.pinv(Psi_new_i)
 
             inv_K_new_acc += inv_Psi_new_i
             m0_estim_new_acc += inv_Psi_new_i.dot(Y_new_i)
@@ -470,16 +471,16 @@ class MAGMA:
         return Theta, Sigma
 
 
-    def predict(self, T_p: np.ndarray, T_obs: np.ndarray=None, Y_obs: np.ndarray=None) -> np.ndarray:
+    def predict(self, T_p: np.ndarray, T_obs: np.ndarray, Y_obs: np.ndarray) -> np.ndarray:
         """Predict the output of a new individual."""
-        assert T_p is not None
+        #assert T_p is not None
 
         n_p = len(T_p)
-        n_obs = 0
-        T_p_obs = T_p
-        if T_obs is not None:
-            n_obs = len(T_obs)
-            T_p_obs = np.concatenate([T_p, T_obs])
+        n_obs = len(T_obs)
+        T_p_obs = np.concatenate([T_p, T_obs])
+
+        print("n_p:", n_p)
+        print("n_obs", n_obs)
 
         argsort_p = np.argsort(T_p)
         argsort_p_obs = np.argsort(T_p_obs)
@@ -500,7 +501,14 @@ class MAGMA:
         Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
         Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
         Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
-        inv_Rho_obs = scipy.linalg.inv(Rho_obs)
+
+        print("Rho_p_obs:", Rho_p_obs.shape)
+        print("Rho_p:", Rho_p.shape)
+        print("Rho_obs:", Rho_obs.shape)
+        print("Rho_pobs:", Rho_pobs.shape)
+        print("Rho_obsp:", Rho_obsp.shape)
+
+        inv_Rho_obs = scipy.linalg.pinv(Rho_obs)
 
         m0_estim_p_obs_argsort = np.zeros_like(m0_estim_p_obs)
         m0_estim_p_obs_argsort[argsort_p_obs] = m0_estim_p_obs
