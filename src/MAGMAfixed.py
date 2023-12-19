@@ -446,7 +446,7 @@ class MAGMA:
             inv_K_new_acc += inv_Psi_new_i
             m0_estim_new_acc += inv_Psi_new_i.dot(Y_new_i)
 
-        K_new = scipy.linalg.inv(inv_K_new_acc)
+        K_new = scipy.linalg.pinv(inv_K_new_acc)
         m0_estim_new = K_new.dot(m0_estim_new_acc)
 
         return K_new, m0_estim_new
@@ -479,9 +479,6 @@ class MAGMA:
         n_obs = len(T_obs)
         T_p_obs = np.concatenate([T_p, T_obs])
 
-        print("n_p:", n_p)
-        print("n_obs", n_obs)
-
         argsort_p = np.argsort(T_p)
         argsort_p_obs = np.argsort(T_p_obs)
         T_p_obs = np.sort(T_p_obs)
@@ -501,12 +498,6 @@ class MAGMA:
         Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
         Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
         Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
-
-        print("Rho_p_obs:", Rho_p_obs.shape)
-        print("Rho_p:", Rho_p.shape)
-        print("Rho_obs:", Rho_obs.shape)
-        print("Rho_pobs:", Rho_pobs.shape)
-        print("Rho_obsp:", Rho_obsp.shape)
 
         inv_Rho_obs = scipy.linalg.pinv(Rho_obs)
 
