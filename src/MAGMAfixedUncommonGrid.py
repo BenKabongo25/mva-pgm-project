@@ -444,12 +444,12 @@ class MAGMA:
             Y_new_i[idx_new_i] = Y_i[mask_i_new]
             Psi_new_i[grid_idx_new_i] = Psi_i[grid_mask_i_new]
 
-            inv_Psi_new_i = scipy.linalg.inv(Psi_new_i)
+            inv_Psi_new_i = scipy.linalg.pinv(Psi_new_i)
 
             inv_K_new_acc += inv_Psi_new_i
             m0_estim_new_acc += inv_Psi_new_i.dot(Y_new_i)
 
-        K_new = scipy.linalg.inv(inv_K_new_acc)
+        K_new = scipy.linalg.pinv(inv_K_new_acc)
         m0_estim_new = K_new.dot(m0_estim_new_acc)
 
         return K_new, m0_estim_new
