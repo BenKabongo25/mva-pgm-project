@@ -4,7 +4,7 @@ from kernels import *
 from typing import *
 
 
-def make_grids(X: Union[list, np.ndarray]) -> list[np.ndarray, np.ndarray]:
+def make_grids(X: Union[list, np.ndarray]) -> list:
     X = X if isinstance(X, np.ndarray) else np.ndarray(X)
     N = len(X)
     XX = np.tile(X, (N, 1)).T
@@ -20,7 +20,7 @@ def mask_square(mask: np.ndarray) -> np.ndarray:
 def compute_inv_K_theta0(
         kernel_k: Kernel, 
         theta0: Union[int, float, list, np.ndarray], 
-        T: Union[list, np.ndarray]) -> list[np.ndarray, np.ndarray]:
+        T: Union[list, np.ndarray]) -> list:
     K_theta0 = kernel_k.compute_all(theta0, T) + 1e-6 * np.identity(len(T))
     inv_K_theta0 = scipy.linalg.pinv(K_theta0) + 1e-6 * np.identity(len(T))
     return K_theta0, inv_K_theta0
@@ -31,9 +31,9 @@ def compute_inv_Psi_individual_i(
         Theta: Union[int, float, list, np.ndarray], 
         sigma: Union[int, float],
         Ti: np.ndarray, 
-        mask: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
+        mask: np.ndarray=None) -> list:
     C_Theta_i = kernel_c.compute_all(Theta, Ti)
-    Psi_Theta_Sigma_i = C_Theta_i + sigma * np.identity(len(Ti))
+    Psi_Theta_Sigma_i = C_Theta_i + sigma**2 * np.identity(len(Ti))
     if mask is not None:
         Psi_Theta_Sigma_i = mask_square(mask) * Psi_Theta_Sigma_i + 1e-6 * np.identity(len(Ti))
     inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i) + 1e-6 * np.identity(len(Ti))
@@ -67,7 +67,7 @@ def multivariate_normal_density(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray
 
 
 def _check_params_multivariate_normal(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, inv_Sigma: np.ndarray
-    ) -> list[int, np.ndarray, float, np.ndarray]:
+    ) -> list:
     """Check and preprocess parameters for multivariate normal density calculation.
 
     Args:
@@ -88,10 +88,28 @@ def _check_params_multivariate_normal(x: np.ndarray, mu: np.ndarray, Sigma: np.n
         mu = np.tile(mu, (len(x), 1))
 
     assert Sigma.shape == (d, d)
-    if inv_Sigma is None: inv_Sigma = np.linalg.pinv(Sigma)  # Use pseudo-inverse for numerical stability
+    if inv_Sigma is None: inv_Sigma = np.linalg.pinv(Sigma) + 1e-6 * np.identity(d)
     else: assert inv_Sigma.shape == Sigma.shape
 
     return d, x - mu, inv_Sigma
+
+def compute_log_likelihood(x: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, inv_Sigma: np.ndarray=None) -> float:
+    """Compute the log-likelihood for a given set of parameters.
+
+    Args:
+        x (np.ndarray): Data points.
+        mu (np.ndarray): Mean vector.
+        Sigma (np.ndarray): Covariance matrix.
+        inv_Sigma (np.ndarray, optional): Inverse of the covariance matrix. Defaults to None.
+
+    Returns:
+        float: Log-likelihood value.
+    """
+    if inv_Sigma is None: inv_Sigma = scipy.linalg.pinv(Sigma) + 1e-6 * np.identity(len(Sigma))
+    slogdet = np.linalg.slogdet(Sigma)[1]
+    tab = np.array([(x - mu).T.dot(inv_Sigma).dot(x - mu)])
+    exp = np.sum(tab)
+    return - 0.5  * (len(x) * np.log(2 * np.pi) + slogdet) - 0.5  * exp
 
 
 def concatenate_Theta_Sigma_i(Theta_i: Union[int, float, np.ndarray], Sigma_i: Union[int, float, np.ndarray]) -> np.ndarray:
@@ -111,7 +129,7 @@ def concatenate_Theta_Sigma_i(Theta_i: Union[int, float, np.ndarray], Sigma_i: U
     return np.concatenate([Theta_i, Sigma_i])
 
 
-def retrieve_Theta_Sigma_i(Theta_Sigma_i: np.ndarray) -> list[Union[int, float, np.ndarray], Union[int, float]]:
+def retrieve_Theta_Sigma_i(Theta_Sigma_i: np.ndarray) -> list:
     """Extract Theta and Sigma from the concatenated array.
 
     Args:
@@ -150,7 +168,7 @@ def log_likelihood_theta0(
         m0_estim: np.ndarray, 
         K_estim: np.ndarray,
         minimize: bool=False,
-        derivative: bool=False) -> list[float, np.ndarray]:
+        derivative: bool=False) -> list:
     """Compute the log-likelihood for theta0.
 
     Args:
@@ -168,7 +186,7 @@ def log_likelihood_theta0(
     """
     factor = -1 if minimize else 1
     K_theta0, inv_K_theta0 = compute_inv_K_theta0(kernel_k, theta0, common_T)
-    LL_theta0 = factor * _log_likelihood(m0_estim, m0, K_theta0, inv_K_theta0, K_estim)
+    LL_theta0 = compute_log_likelihood(m0, m0_estim, K_theta0, inv_K_theta0) - 0.5 * np.trace(K_estim.dot(inv_K_theta0))
     if not derivative: return LL_theta0
 
     z = (m0_estim - m0)[:, np.newaxis]
@@ -180,7 +198,7 @@ def log_likelihood_theta0(
     for i in range(len(theta0)):
         d_theta0[i] = (d_K_theta0 * d_theta0_of_K_theta0[i]).sum()
 
-    return LL_theta0, factor * d_theta0
+    return factor * LL_theta0, factor * d_theta0
 
 
 def log_likelihood_Theta_Sigma_Common_HP(
@@ -192,7 +210,7 @@ def log_likelihood_Theta_Sigma_Common_HP(
         m0_estim: np.ndarray,
         K_estim: np.ndarray,
         minimize: bool=False,
-        derivative: bool=False) -> list[float, np.ndarray]:
+        derivative: bool=False) -> list:
     """Compute the log-likelihood for Theta and Sigma with common hyperparameters.
 
     Args:
@@ -239,7 +257,7 @@ def log_likelihood_Theta_Sigma_Common_HP(
     d_Theta_of_Psi_Theta_Sigma = kernel_c.derivate_parameters(Theta, common_T)
     for i in range(len(Theta)):
         d_Theta_Sigma[i] = (d_Psi_Theta_Sigma * d_Theta_of_Psi_Theta_Sigma[i]).sum()
-    d_Theta_Sigma[-1] = (d_Psi_Theta_Sigma * Sigma * np.identity(n_common_T)).sum()
+    d_Theta_Sigma[-1] = (d_Psi_Theta_Sigma * 2 * Sigma * np.identity(n_common_T)).sum()
     d_Theta_Sigma = factor * d_Theta_Sigma
 
     return LL_Theta_Sigma, d_Theta_Sigma
@@ -254,7 +272,7 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
         m0_estim: np.ndarray,
         K_estim: np.ndarray,
         minimize: bool=False,
-        derivative: bool=False) -> list[float, np.ndarray]: 
+        derivative: bool=False) -> list: 
     """Compute the log-likelihood for individual Theta and Sigma with different hyperparameters.
 
     Args:
@@ -287,58 +305,7 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
     d_Theta_of_Psi_Theta_Sigma = kernel_c.derivate_parameters(Theta, common_T)
     for i in range(len(Theta)):
         d_Theta_Sigma[i] = (d_Psi_Theta_Sigma * d_Theta_of_Psi_Theta_Sigma[i]).sum()
-    d_Theta_Sigma[-1] = (d_Psi_Theta_Sigma * Sigma * np.identity(n_common_T)).sum()
+    d_Theta_Sigma[-1] = (d_Psi_Theta_Sigma * 2 * Sigma * np.identity(n_common_T)).sum()
     d_Theta_Sigma = factor * d_Theta_Sigma
 
     return LL_Theta_Sigma, d_Theta_Sigma
-
-def log_likelihood_GP(
-    theta_sigma: np.ndarray, 
-    kernel_k: Kernel,                 
-    T: np.ndarray,
-    Y: np.ndarray,
-    minimize: bool=False,
-    derivative: bool=False) -> Union[float, Tuple[float, np.ndarray]]:
-    """
-    Compute the log-likelihood of a Gaussian Process.
-
-    Args:
-        theta_sigma (np.ndarray): Array containing hyperparameters (Theta) and noise variance (Sigma).
-        kernel_k (Kernel): Covariance kernel for the process.
-        T (np.ndarray): Time points for the observations.
-        Y (np.ndarray): Observations.
-        minimize (bool, optional): If True, return the negative log-likelihood for minimization.
-        derivative (bool, optional): If True, compute and return the derivatives along with the log-likelihood.
-
-    Returns:
-        Union[float, Tuple[float, np.ndarray]]: Log-likelihood or a tuple containing log-likelihood and derivatives.
-
-    Note:
-        The function computes the log-likelihood of a Gaussian Process given the input hyperparameters.
-        If `minimize` is True, it returns the negative log-likelihood, which is useful for optimization.
-        If `derivative` is True, it also computes and returns the derivatives of the log-likelihood with respect to
-        hyperparameters and noise variance.
-
-    """
-    
-    factor = -1 if minimize else 1
-    theta, sigma = retrieve_Theta_Sigma_i(theta_sigma)
-    n = len(T)
-    K = kernel_k.compute(theta, T, T)
-    C = (K + sigma * np.identity(n)) + 1e-6 * np.identity(n)
-    C_inv = scipy.linalg.pinv(C) + 1e-6 * np.identity(n)
-    LL= factor * (-0.5*n * np.log(2*np.pi) - 0.5 * np.linalg.slogdet(C)[1] - 0.5 * (np.transpose(Y)).dot(C_inv).dot(Y))
-    if not derivative:
-        return LL
-
-    d_theta = np.zeros_like(theta)        
-    d_C_inv = (0.5 * C - 0.5 * np.outer(Y, Y))
-    d_C = - C_inv.dot(d_C_inv).dot(C_inv)
-    d_theta_of_K = kernel_k.derivate_parameters(theta, Y)
-    for i in range(len(theta)):
-        d_theta[i] = (d_C * d_theta_of_K[i]).sum()
-    d_sigma = (d_C *  sigma * np.identity(n)).sum()
-
-    return LL, factor * concatenate_Theta_Sigma_i(d_theta, d_sigma)
-
-

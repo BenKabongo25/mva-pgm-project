@@ -346,8 +346,5 @@ class GaussianKernel(Kernel):
 
         Returns:
             np.ndarray: Derivative of parameters.
-
-        Raises:
-            NotImplementedError: Derivative computation is not implemented for GaussianKernel.
         """
         raise NotImplementedError

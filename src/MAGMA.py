@@ -74,8 +74,8 @@ class MAGMA:
     """
 
     def __init__(self,
-                T: Union[np.ndarray, list[np.ndarray]],
-                Y: Union[np.ndarray, list[np.ndarray]],
+                T: Union[np.ndarray, list],
+                Y: Union[np.ndarray, list],
                 common_T: Union[list, np.ndarray]=None,
                 m0: Union[int, float, list, np.ndarray]=None, 
                 m0_function: Callable=None,
@@ -120,8 +120,7 @@ class MAGMA:
         self.set_Sigma(Sigma)
         self.init_history()
 
-
-    def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list[np.ndarray]]=None) -> None: 
+    def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list]=None) -> None: 
         """Set common time points."""
         if common_T is not None:
             self.common_T = common_T # sorted common_T
@@ -137,7 +136,7 @@ class MAGMA:
                 self.common_T = np.unique(all_ti)
 
     
-    def set_TY(self, T: Union[np.ndarray, list[np.ndarray]], Y: Union[np.ndarray, list[np.ndarray]]) -> None:
+    def set_TY(self, T: Union[np.ndarray, list], Y: Union[np.ndarray, list]) -> None:
         """Set time points and observations."""
         if T is None:
             self.common_grid_flag = True
@@ -149,14 +148,14 @@ class MAGMA:
         if self.common_grid_flag:
             T = None
             for i, y in enumerate(Y): 
-                assert len(y) == self.n_common_T, f"Indivual {i}"
+                assert len(y) == self.n_common_T, f"Individual {i}"
             Y_normalized = Y
 
         else:
             assert T is not None
             assert len(T) == len(Y)
             for i, (t, y) in enumerate(zip(T, Y)):
-                assert len(t) == len(y), f"Indivual {i}"
+                assert len(t) == len(y), f"Individual {i}"
 
             n_individuals = len(Y)
             T_masks = np.zeros((n_individuals, self.n_common_T))
@@ -169,7 +168,6 @@ class MAGMA:
                 mask = np.isin(self.common_T, Ti_sorted)
                 Yi_normalized = np.zeros(self.n_common_T)
                 Yi_normalized[np.where(mask)[0]] = Yi_sorted
-
                 T_masks[i] = mask
                 Y_normalized[i] = Yi_normalized
 
@@ -253,7 +251,7 @@ class MAGMA:
         """Load the model"""
         with open(model_file, "rb") as f:
             return pickle.load(f)
-
+            
 
     def get_individual(self, i: int) -> tuple:
         """Return input and output of i-th individual"""
@@ -272,7 +270,7 @@ class MAGMA:
 
         if self.common_hp_flag and self.common_grid_flag:
             _, inv_Psi_Theta_Sigma = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, self.common_T, None)
-            K = scipy.linalg.pinv(inv_K_theta0 + self.n_individuals * inv_Psi_Theta_Sigma)
+            K = scipy.linalg.pinv(inv_K_theta0 + self.n_individuals * inv_Psi_Theta_Sigma) + 1e-6 * np.eye(self.n_common_T)
             m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0))
 
         else:
@@ -297,7 +295,7 @@ class MAGMA:
                 inv_Psi_Theta_Sigma.append(inv_Psi_Theta_Sigma_i)
 
             inv_Psi_Theta_Sigma = np.array(inv_Psi_Theta_Sigma)
-
+            
             K = scipy.linalg.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma.sum(axis=0))
             m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
 
@@ -435,11 +433,12 @@ class MAGMA:
             
             mask_new_i = np.isin(T_new, T_i)
             mask_i_new = np.isin(T_i, T_new)
+            idx_i_new = np.where(mask_i_new)[0]
             grid_mask_i_new = np.ix_(mask_i_new, mask_i_new)
             idx_new_i = np.where(mask_new_i)[0]
             grid_idx_new_i = np.ix_(idx_new_i, idx_new_i)
             
-            Y_new_i[idx_new_i] = Y_i[mask_i_new]
+            Y_new_i[idx_new_i] = Y_i[idx_i_new]
             Psi_new_i[grid_idx_new_i] = Psi_i[grid_mask_i_new]
 
             inv_Psi_new_i = scipy.linalg.pinv(Psi_new_i)
@@ -472,16 +471,13 @@ class MAGMA:
         return Theta, Sigma
 
 
-    def predict(self, T_p: np.ndarray, T_obs: np.ndarray=None, Y_obs: np.ndarray=None) -> np.ndarray:
+    def predict(self, T_p: np.ndarray, T_obs: np.ndarray, Y_obs: np.ndarray) -> np.ndarray:
         """Predict the output of a new individual."""
-        assert T_p is not None
+        #assert T_p is not None
 
         n_p = len(T_p)
-        n_obs = 0
-        T_p_obs = T_p
-        if T_obs is not None:
-            n_obs = len(T_obs)
-            T_p_obs = np.concatenate([T_p, T_obs])
+        n_obs = len(T_obs)
+        T_p_obs = np.concatenate([T_p, T_obs])
 
         argsort_p = np.argsort(T_p)
         argsort_p_obs = np.argsort(T_p_obs)
@@ -502,6 +498,7 @@ class MAGMA:
         Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
         Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
         Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
+
         inv_Rho_obs = scipy.linalg.pinv(Rho_obs)
 
         m0_estim_p_obs_argsort = np.zeros_like(m0_estim_p_obs)
