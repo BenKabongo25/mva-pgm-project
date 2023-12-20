@@ -88,7 +88,7 @@ class GaussianProcess:
         self.theta = theta
         self.sigma = sigma 
 
-    def predict(self, T_p):
+    def predict(self, T_p: Union[list, np.ndarray]) -> tuple:
         """
         Make predictions using the Gaussian Process model.
 
