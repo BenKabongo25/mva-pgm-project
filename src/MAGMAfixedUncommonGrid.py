@@ -275,7 +275,7 @@ class MAGMA:
         _, inv_K_theta0 = compute_inv_K_theta0(self.kernel_k, self.theta0, self.T)
 
         if self.common_hp_flag and self.common_grid_flag:
-            _, inv_Psi_Theta_Sigma = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, self.common_T, None)
+            _, inv_Psi_Theta_Sigma = compute_inv_Psi_individual_i(self.kernel_c, self.Theta, self.Sigma, self.common_T, mask)
             K = scipy.linalg.pinv(inv_K_theta0 + self.n_individuals * inv_Psi_Theta_Sigma) + 1e-6 * np.eye(self.n_common_T)
             m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + ((self.Y).dot(inv_Psi_Theta_Sigma)).sum(axis=0))
 
@@ -299,7 +299,7 @@ class MAGMA:
                 _, inv_Psi_Theta_Sigma_i = compute_inv_Psi_individual_i(self.kernel_c, Theta, sigma, self.T, mask)
                 inv_Psi_Theta_Sigma_dot_Y += inv_Psi_Theta_Sigma_i.dot(tilde_Yi)
                 inv_Psi_Theta_Sigma += inv_Psi_Theta_Sigma_i
-                
+            
             K = scipy.linalg.pinv(inv_K_theta0 + inv_Psi_Theta_Sigma) + 1e-6 * np.eye(self.n_T)
             m0_estim = (K).dot(inv_K_theta0.dot(self.m0) + inv_Psi_Theta_Sigma_dot_Y)
 
@@ -407,7 +407,7 @@ class MAGMA:
                 break
 
     
-    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
+    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list:
         assert T_new is not None
 
         K_new = None
@@ -430,7 +430,7 @@ class MAGMA:
             Y_i = self.Y[i] 
             Theta_i = self.Theta if self.common_hp_flag else self.Theta[i]
             sigma_i = self.Sigma if self.common_hp_flag else self.Sigma[i]
-            Psi_i, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta_i, sigma_i, T_i, None)
+            Psi_i, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta_i, sigma_i, T_i, self.T_masks)
 
             Y_new_i = np.zeros(n_new)
             Psi_new_i = np.zeros((n_new, n_new))
@@ -455,7 +455,7 @@ class MAGMA:
         return K_new, m0_estim_new
 
 
-    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list[np.ndarray, float]:
+    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list:
         if self.common_hp_flag:
             return self.Theta, self.Sigma
         

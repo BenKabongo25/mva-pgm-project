@@ -37,6 +37,8 @@ def compute_inv_Psi_individual_i(
     if mask is not None:
         Psi_Theta_Sigma_i = mask_square(mask) * Psi_Theta_Sigma_i + 1e-6 * np.identity(len(T))
     inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i) + 1e-6 * np.identity(len(T))
+    if mask is not None:
+        inv_Psi_Theta_Sigma_i = mask_square(mask) * inv_Psi_Theta_Sigma_i + 1e-6 * np.identity(len(T))
     return Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i
 
 
@@ -237,14 +239,13 @@ def log_likelihood_Theta_Sigma_Common_HP(
     if derivative:
         d_Theta_Sigma = np.zeros_like(Theta_Sigma)
         d_Psi_Theta_Sigma = 0
-
     for i in range(n_individuals):
         Ti_mask = None if T_masks is None else T_masks[i]
         Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i = compute_inv_Psi_individual_i(kernel_c, Theta, Sigma, common_T, Ti_mask)
-        LL_Theta_Sigma += _log_likelihood(Y[i], m0_estim, Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i, K_estim)
+        LL_Theta_Sigma += _log_likelihood(Y[i], m0_estim*Ti_mask, Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i, K_estim)
 
         if derivative:
-            z = (Y[i] - m0_estim)[:, np.newaxis]
+            z = (Y[i] - m0_estim*Ti_mask)[:, np.newaxis]
             d_Psi_Theta_Sigma += (- 0.5 * inv_Psi_Theta_Sigma_i 
                                   + 0.5 * inv_Psi_Theta_Sigma_i.dot(np.outer(z, z)).dot(inv_Psi_Theta_Sigma_i)
                                   + 0.5 * inv_Psi_Theta_Sigma_i.dot(K_estim).dot(inv_Psi_Theta_Sigma_i))
