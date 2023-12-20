@@ -3,6 +3,7 @@ from MAGMA import MAGMA
 from gaussian_process import GaussianProcess
 from kernels import Kernel, ExponentiatedQuadraticKernel
 from typing import *
+from tqdm import tqdm
 
 
 class Trainer_GP_MAGMA:
@@ -60,19 +61,19 @@ class Trainer_GP_MAGMA:
 
 
     def train_models(self, max_iterations: int=30, eps: float=1e-6):
-        self.magma_model.fit(max_iterations=max_iterations, eps=eps)
-
         T = None
         if self.magma_model.common_grid_flag:
             T = self.magma_model.common_T
 
-        for i in range(len(self.gp_models)):
+        for i in tqdm(range(len(self.gp_models)), "GPs train"):
             if not self.magma_model.common_grid_flag:
                 T = self.magma_model.T[i]
             Y = self.magma_model.Y[i]
-            gp_i = self.gp_models
+            gp_i = self.gp_models[i]
             gp_i.fit(T, Y)
             self.gp_models[i] = gp_i
+
+        self.magma_model.fit(max_iterations=max_iterations, eps=eps)
 
 
     def predict_models(self, T_p: np.ndarray, T_obs: np.ndarray, Y_obs: np.ndarray) -> tuple:
@@ -99,7 +100,7 @@ class Trainer_GP_MAGMA:
     def predict_models_all(self, T_ps: np.ndarray, T_obss: np.ndarray, Y_obss: np.ndarray) -> list:
         all_preds = []
         assert len(T_ps) == len(T_obss) == len(Y_obss)
-        for i in range(len(T_ps)):
+        for i in tqdm(range(len(T_ps)), "Prediction"):
             T_p, T_obs, Y_obs = T_ps[i], T_obss[i], Y_obss[i]
             preds = self.predict_models(T_p, T_obs, Y_obs)
             all_preds.append(preds)
@@ -109,7 +110,7 @@ class Trainer_GP_MAGMA:
     def evaluate_models_all(self, means_true, T_ps: np.ndarray, T_obss: np.ndarray, Y_obss: np.ndarray) -> list:
         all_res = []
         assert len(means_true) == len(T_ps) == len(T_obss) == len(Y_obss)
-        for i in range(len(T_ps)):
+        for i in tqdm(range(len(T_ps)), "Evaluation"):
             mean_true, T_p, T_obs, Y_obs = means_true[i], T_ps[i], T_obss[i], Y_obss[i]
             res = self.evaluate_models(mean_true, T_p, T_obs, Y_obs)
             all_res.append(res)
