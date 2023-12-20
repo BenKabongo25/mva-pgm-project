@@ -12,6 +12,7 @@ from utils import (compute_inv_K_theta0,
                    log_likelihood_theta0, 
                    log_likelihood_Theta_Sigma_Common_HP,
                    log_likelihood_Theta_Sigma_i_Different_HP,
+                   log_likelihood_learn_new_parameters,
                    concatenate_Theta_Sigma_i,
                    retrieve_Theta_Sigma_i)
 
@@ -452,7 +453,7 @@ class MAGMA:
         return K_new, m0_estim_new
 
 
-    def _learn_new_parameters(self, T_new: np.ndarray, Y_new: np.ndarray) -> list[np.ndarray, float]:
+    def _learn_new_parameters(self, T_obs: np.ndarray, Y_obs: np.ndarray, m0_estim_obs: np.ndarray) -> list[np.ndarray, float]:
         if self.common_hp_flag:
             return self.Theta, self.Sigma
         
@@ -461,7 +462,8 @@ class MAGMA:
         Sigma = self.Sigma[i]
         Theta_Sigma0 = concatenate_Theta_Sigma_i(Theta, Sigma)
         Theta_Sigma = scipy.optimize.minimize(
-            fun=None, # TODO
+            fun=lambda x: log_likelihood_learn_new_parameters(x, self.kernel_c, T_obs, Y_obs, m0_estim_obs,
+                                                            minimize=True, derivative=True),
             jac=True,
             x0=Theta_Sigma0,
             method="L-BFGS-B",
@@ -473,7 +475,9 @@ class MAGMA:
 
     def predict(self, T_p: np.ndarray, T_obs: np.ndarray, Y_obs: np.ndarray) -> np.ndarray:
         """Predict the output of a new individual."""
-        #assert T_p is not None
+        assert T_p is not None
+        assert T_obs is not None and Y_obs is not None
+        assert len(T_obs) == len(Y_obs)
 
         n_p = len(T_p)
         n_obs = len(T_obs)
@@ -488,7 +492,12 @@ class MAGMA:
         else:
             K_p_obs, m0_estim_p_obs = self._predict_posterior_inference(T_p_obs) 
 
-        Theta, Sigma = self._learn_new_parameters(T_obs, Y_obs)
+        m0_estim_p_obs_argsort = np.zeros_like(m0_estim_p_obs)
+        m0_estim_p_obs_argsort[argsort_p_obs] = m0_estim_p_obs
+        m0_estim_p   = m0_estim_p_obs_argsort[:n_p]
+        m0_estim_obs = m0_estim_p_obs_argsort[n_p:]
+
+        Theta, Sigma = self._learn_new_parameters(T_obs, Y_obs, m0_estim_obs)
         Psi_p_obs, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta, Sigma, T_p_obs, None)
 
         Rho_p_obs = K_p_obs + Psi_p_obs
@@ -498,13 +507,7 @@ class MAGMA:
         Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
         Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
         Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
-
         inv_Rho_obs = scipy.linalg.pinv(Rho_obs)
-
-        m0_estim_p_obs_argsort = np.zeros_like(m0_estim_p_obs)
-        m0_estim_p_obs_argsort[argsort_p_obs] = m0_estim_p_obs
-        m0_estim_p   = m0_estim_p_obs_argsort[:n_p]
-        m0_estim_obs = m0_estim_p_obs_argsort[n_p:]
         
         mu0 = m0_estim_p + (Rho_pobs).dot(inv_Rho_obs).dot(Y_obs - m0_estim_obs)
         Rho = Rho_p - (Rho_pobs).dot(inv_Rho_obs).dot(Rho_obsp)
