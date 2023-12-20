@@ -4,7 +4,8 @@ from kernels import *
 from typing import *
 
 
-def make_grids(X: Union[list, np.ndarray]) -> list:
+def make_grids(X: Union[list, np.ndarray]) -> tuple:
+
     X = X if isinstance(X, np.ndarray) else np.ndarray(X)
     N = len(X)
     XX = np.tile(X, (N, 1)).T
@@ -20,7 +21,18 @@ def mask_square(mask: np.ndarray) -> np.ndarray:
 def compute_inv_K_theta0(
         kernel_k: Kernel, 
         theta0: Union[int, float, list, np.ndarray], 
-        T: Union[list, np.ndarray]) -> list:
+        T: Union[list, np.ndarray]) -> tuple:
+    """
+    Compute the the covariance matrix K_theta0 and its pseudo-inverse.
+
+    Args:
+        kernel_k (Kernel): Type of Kernel function to use.
+        theta0 (Union[int, float, list, np.ndarray]): Parameters of the kernel function.
+        T (Union[list, np.ndarray]): Time points.
+
+    Returns:
+        tuple: Tuple containing the covariance matrix K_theta0 and its pseudo-inverse.
+    """
     K_theta0 = kernel_k.compute_all(theta0, T) + 1e-6 * np.identity(len(T))
     inv_K_theta0 = scipy.linalg.pinv(K_theta0) + 1e-6 * np.identity(len(T))
     return K_theta0, inv_K_theta0
@@ -31,7 +43,20 @@ def compute_inv_Psi_individual_i(
         Theta: Union[int, float, list, np.ndarray], 
         sigma: Union[int, float],
         Ti: np.ndarray, 
-        mask: np.ndarray=None) -> list:
+        mask: np.ndarray=None) -> tuple:
+    """
+    Compute the the covariance matrix Psi_Theta_Sigma_i and its pseudo-inverse.
+    
+    Args:
+        kernel_c (Kernel): Type of Kernel function to use.
+        Theta (Union[int, float, list, np.ndarray]): Parameters of the kernel function.
+        sigma (Union[int, float]): Noise variance.
+        Ti (np.ndarray): Individual time points.
+        mask (np.ndarray, optional): Individual time mask to handle the pooled time points. Defaults to None.
+    
+    Returns:
+        tuple: Tuple containing the covariance matrix Psi_Theta_Sigma_i and its pseudo-inverse.
+    """
     C_Theta_i = kernel_c.compute_all(Theta, Ti)
     Psi_Theta_Sigma_i = C_Theta_i + sigma**2 * np.identity(len(Ti))
     if mask is not None:

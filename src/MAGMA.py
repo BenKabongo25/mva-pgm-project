@@ -90,7 +90,26 @@ class MAGMA:
                 kernel_k: Kernel=ExponentiatedQuadraticKernel,
                 kernel_c: Kernel=ExponentiatedQuadraticKernel,
         ):
+        """
+        Initialize the MAGMA model.
 
+        Parameters:
+            T (Union[np.ndarray, list[np.ndarray]]): Time points for each individual.
+            Y (Union[np.ndarray, list[np.ndarray]]): Observations for each individual.
+            common_T (Union[list, np.ndarray], optional): Common time points for all individuals.
+            m0 (Union[int, float, list, np.ndarray], optional): Prior mean.
+            m0_function (Callable): Prior mean function.
+            theta0 (Union[int, float, list, np.ndarray], optional): Hyperparameters for covariance kernel k_theta0(.|.).
+            Theta (Union[int, float, list, np.ndarray], optional): Hyperparameters for covariance kernel c_theta_i(.|.).
+            Sigma (Union[int, float, list, np.ndarray], optional): Noise variance associated with the i-th individual.
+            common_hp_flag (bool, optional): True -> common hyperparameters theta and sigma.
+            common_grid_flag (bool, optional): True -> common times for all individuals.
+            save_history_flag (bool, optional): Flag to save optimization history.
+            scipy_optimize_display (bool, optional): Flag to display optimization information.
+            kernel_k (Kernel, optional): Kernel k_theta0 object.
+            kernel_c (Kernel, optional): Kernel c_theta_i object.
+        """
+        
         # Set flags
         self.common_hp_flag = common_hp_flag
         self.common_grid_flag = common_grid_flag
@@ -122,7 +141,13 @@ class MAGMA:
         self.init_history()
 
     def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list]=None) -> None: 
-        """Set common time points."""
+        """
+        Set common time points.
+
+        Parameters:
+            common_T (Union[list, np.ndarray]): Common time points for all individuals.
+            T (Union[np.ndarray, list], optional): Time points for each individual.
+        """
         if common_T is not None:
             self.common_T = common_T # sorted common_T
             
@@ -138,7 +163,13 @@ class MAGMA:
 
     
     def set_TY(self, T: Union[np.ndarray, list], Y: Union[np.ndarray, list]) -> None:
-        """Set time points and observations."""
+        """
+        Set time points and observations.
+
+        Parameters:
+            T (Union[np.ndarray, list]): Time points for each individual.
+            Y (Union[np.ndarray, list]): Observations for each individual.
+        """
         if T is None:
             self.common_grid_flag = True
             assert self.common_T is not None
@@ -179,7 +210,13 @@ class MAGMA:
 
 
     def set_m0(self, m0: Union[int, float, list, np.ndarray], m0_function: Callable) -> None:
-        """Set prior mean."""
+        """
+        Set prior mean.
+
+        Parameters:
+            m0 (Union[int, float, list, np.ndarray]): Prior mean.
+            m0_function (Callable): Prior mean function.
+        """
         assert isinstance(m0_function, Callable)
         if m0 is None:
             m0 = m0_function(self.n_common_T)
@@ -193,14 +230,24 @@ class MAGMA:
 
 
     def set_theta0(self, theta0: Union[int, float, list, np.ndarray]) -> None:
-        """Set hyperparameters for covariance kernel k_theta0."""
+        """
+        Set hyperparameters for covariance kernel k_theta0.
+
+        Parameters:
+            theta0 (Union[int, float, list, np.ndarray]): Hyperparameters for covariance kernel k_theta0(.|.).
+        """
         if theta0 is None:
             theta0 = self.kernel_k.init_parameters()
         self.theta0 = theta0
 
 
     def set_Theta(self, Theta: Union[int, float, list, np.ndarray]) -> None:
-        """Set hyperparameters for covariance kernel c_theta_i."""
+        """
+        Set hyperparameters for covariance kernel c_theta_i.
+
+        Parameters:
+            Theta (Union[int, float, list, np.ndarray]): Hyperparameters for covariance kernel c_theta_i(.|.).
+        """
         if Theta is None:
             if self.common_hp_flag: 
                 Theta = self.kernel_c.init_parameters()
@@ -212,7 +259,12 @@ class MAGMA:
 
 
     def set_Sigma(self, Sigma: Union[int, float, list, np.ndarray]) -> None:
-        """Set noise variance associated with the i-th individual."""
+        """
+        Set noise variance associated with the i-th individual.
+
+        Parameters:
+            Sigma (Union[int, float, list, np.ndarray]): Noise variance associated with the i-th individual.
+        """
         if Sigma is None:
             if self.common_hp_flag: Sigma = np.random.random()
             else: Sigma = np.random.random(self.n_individuals)
@@ -243,19 +295,37 @@ class MAGMA:
 
 
     def save_model(self, model_file) -> None:
-        """Save the model"""
+        """
+        Save the model.
+
+        Parameters:
+            model_file (str): Filepath to save the model.
+        """
         with open(model_file, "wb") as f:
             pickle.dump(self, f)
 
 
     def load_model(self, model_file):
-        """Load the model"""
+        """
+        Load the model.
+
+        Parameters:
+            model_file (str): Filepath to load the model.
+        """
         with open(model_file, "rb") as f:
             return pickle.load(f)
             
 
     def get_individual(self, i: int) -> tuple:
-        """Return input and output of i-th individual"""
+        """
+        Return input and output of i-th individual.
+
+        Parameters:
+            i (int): Index of the individual.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Input and output of the i-th individual.
+        """
         assert 0 <= i < self.n_individuals
         if self.common_grid_flag:
             return self.common_T, self.Y[i], None, None
@@ -263,7 +333,7 @@ class MAGMA:
 
 
     def E_step(self):
-        """Perform the E-step of the optimization algorithm."""
+        """Perform the E-step of the Expectation-Maximization algorithm."""
         K = None
         m0_estim = None
 
@@ -305,7 +375,7 @@ class MAGMA:
 
 
     def M_step(self):
-        """Perform the M-step of the optimization algorithm."""
+        """Perform the M-step of the Expectation-Maximization algorithm."""
         if self.scipy_optimize_display:
             print("=" * 100)
             print("theta0")
@@ -393,7 +463,13 @@ class MAGMA:
 
 
     def fit(self, max_iterations: int=30, eps: float=1e-6):
-        """Fit the model using the EM algorithm."""
+        """
+        Fit the model using the EM algorithm.
+
+        Parameters:
+            max_iterations (int, optional): Maximum number of iterations.
+            eps (float, optional): Convergence threshold.
+        """
         for _ in tqdm(range(max_iterations), "MAGMA Training"):
             LL = self.LL_theta0 + self.LL_Theta_Sigma
             self.E_step()
@@ -405,6 +481,15 @@ class MAGMA:
 
     
     def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
+        """
+        Predict the posterior inference for new data.
+
+        Parameters:
+            T_new (np.ndarray, optional): Time points for new data.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Predicted mean and covariance.
+        """       
         assert T_new is not None
 
         K_new = None
@@ -454,6 +539,17 @@ class MAGMA:
 
 
     def _learn_new_parameters(self, T_obs: np.ndarray, Y_obs: np.ndarray, m0_estim_obs: np.ndarray) -> list[np.ndarray, float]:
+        """
+        Learn new parameters using EM.
+
+        Parameters:
+            T_obs (np.ndarray): Observed time points.
+            Y_obs (np.ndarray): Observed data.
+            m0_estim_obs (np.ndarray): Estimated prior mean for observed data.
+
+        Returns:
+            Tuple[np.ndarray, float]: Estimated parameters and log-likelihood.
+        """
         if self.common_hp_flag:
             return self.Theta, self.Sigma
         
@@ -474,7 +570,17 @@ class MAGMA:
 
 
     def predict(self, T_p: np.ndarray, T_obs: np.ndarray, Y_obs: np.ndarray) -> np.ndarray:
-        """Predict the output of a new individual."""
+        """
+        Predict the output of a new individual.
+
+        Parameters:
+            T_p (np.ndarray): Time points for prediction.
+            T_obs (np.ndarray): Observed time points.
+            Y_obs (np.ndarray): Observed data.
+
+        Returns:
+            np.ndarray: Predicted output for the new individual.
+        """
         assert T_p is not None
         assert T_obs is not None and Y_obs is not None
         assert len(T_obs) == len(Y_obs)
