@@ -339,22 +339,21 @@ def log_likelihood_GP(
     factor = -1 if minimize else 1
     theta, sigma = retrieve_Theta_Sigma_i(theta_sigma)
     n = len(T)
-    K = kernel_k.compute(theta, T, T)
+    K = kernel_k.compute(theta, T,T)
     C = (K + sigma * np.identity(n)) + 1e-6 * np.identity(n)
     C_inv = scipy.linalg.pinv(C) + 1e-6 * np.identity(n)
     LL= factor * (-0.5*n * np.log(2*np.pi) - 0.5 * np.linalg.slogdet(C)[1] - 0.5 * (np.transpose(Y)).dot(C_inv).dot(Y))
     if not derivative:
         return LL
 
-    d_theta = np.zeros_like(theta)
+    d_theta_sigma = np.zeros_like(theta_sigma)
     d_C_inv = (0.5 * C - 0.5 * np.outer(Y, Y))
     d_C = - C_inv.dot(d_C_inv).dot(C_inv)
-    d_theta_of_K = kernel_k.derivate_parameters(theta, Y)
+    d_theta_of_K = kernel_k.derivate(theta, T)
     for i in range(len(theta)):
-        d_theta[i] = (d_C * d_theta_of_K[i]).sum()
-    d_sigma = (d_C *  sigma * np.identity(n)).sum()
-
-    return LL, factor * concatenate_Theta_Sigma_i(d_theta, d_sigma)
+        d_theta_sigma[i] = np.trace(d_C * d_theta_of_K[i])
+    d_theta_sigma[-1] = d_C.trace()
+    return LL, factor *d_theta_sigma
 
 
 def log_likelihood_learn_new_parameters(
