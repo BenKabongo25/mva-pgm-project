@@ -19,6 +19,16 @@ def make_grids(X: Union[list, np.ndarray]) -> list:
     return XX, YY
 
 
+def create_matrix(X: Union[list, np.ndarray]) -> np.ndarray:
+    X = X if isinstance(X, np.ndarray) else np.ndarray(X)
+    N = len(X)
+    res = np.zeros((N, N))
+    for i in range(N):
+        for j in range(N):
+            res[i, j] = X[i] - X[j]
+    return res
+
+
 class Kernel:
     """
     Abstract base class for kernels.
@@ -200,6 +210,20 @@ class ExponentiatedQuadraticKernel(Kernel):
         d_v = 2 * _v * exp_XX_diff_square
         d_l = (_v ** 2) / (_l ** 3) * XX_diff_square * exp_XX_diff_square
         d_v, d_l = d_v[np.newaxis, :], d_l[np.newaxis, :]
+        return np.concatenate([d_v, d_l])
+    
+    @classmethod
+    def derivate(cls,
+                    parameters: Union[np.ndarray, list],
+                    Time_points: Union[list, np.ndarray]
+                    ) -> np.ndarray:
+        _v, _l = ExponentiatedQuadraticKernel._check_parameters(parameters)
+        # Create matrix
+        T = create_matrix(Time_points)
+        XX_diff_square = T ** 2
+        exp_XX_diff_square = np.exp(-XX_diff_square / (2 * (_l ** 2)))
+        d_v = 2 * _v * exp_XX_diff_square
+        d_l = ((_v ** 2) / (_l ** 3)) * XX_diff_square * exp_XX_diff_square
         return np.concatenate([d_v, d_l])
 
 
