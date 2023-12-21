@@ -62,6 +62,9 @@ def compute_inv_Psi_individual_i(
     if mask is not None:
         Psi_Theta_Sigma_i = mask_square(mask) * Psi_Theta_Sigma_i + 1e-6 * np.identity(len(Ti))
     inv_Psi_Theta_Sigma_i = scipy.linalg.pinv(Psi_Theta_Sigma_i) + 1e-6 * np.identity(len(Ti))
+    if mask is not None:
+        inv_Psi_Theta_Sigma_i = mask_square(mask) * inv_Psi_Theta_Sigma_i + 1e-6 * np.identity(len(Ti))
+
     return Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i
 
 
@@ -265,11 +268,12 @@ def log_likelihood_Theta_Sigma_Common_HP(
 
     for i in range(n_individuals):
         Ti_mask = None if T_masks is None else T_masks[i]
+        m0_estim_i = m0_estim if Ti_mask is None else m0_estim*Ti_mask
         Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i = compute_inv_Psi_individual_i(kernel_c, Theta, Sigma, common_T, Ti_mask)
-        LL_Theta_Sigma += _log_likelihood(Y[i], m0_estim, Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i, K_estim)
+        LL_Theta_Sigma += _log_likelihood(Y[i], m0_estim_i, Psi_Theta_Sigma_i, inv_Psi_Theta_Sigma_i, K_estim)
 
         if derivative:
-            z = (Y[i] - m0_estim)[:, np.newaxis]
+            z = (Y[i] - m0_estim_i)[:, np.newaxis]
             d_Psi_Theta_Sigma += (- 0.5 * inv_Psi_Theta_Sigma_i 
                                   + 0.5 * inv_Psi_Theta_Sigma_i.dot(np.outer(z, z)).dot(inv_Psi_Theta_Sigma_i)
                                   + 0.5 * inv_Psi_Theta_Sigma_i.dot(K_estim).dot(inv_Psi_Theta_Sigma_i))
@@ -316,12 +320,14 @@ def log_likelihood_Theta_Sigma_i_Different_HP(
     """
     factor = -1 if minimize else 1
     Theta, Sigma = retrieve_Theta_Sigma_i(Theta_Sigma_i)
+    m0_estim_i = m0_estim if Ti_mask is None else m0_estim*Ti_mask
+
     Psi_Theta_Sigma, inv_Psi_Theta_Sigma = compute_inv_Psi_individual_i(kernel_c, Theta, Sigma, common_T, Ti_mask)
-    LL_Theta_Sigma = factor * _log_likelihood(Yi, m0_estim, Psi_Theta_Sigma, inv_Psi_Theta_Sigma, K_estim)
+    LL_Theta_Sigma = factor * _log_likelihood(Yi, m0_estim_i, Psi_Theta_Sigma, inv_Psi_Theta_Sigma, K_estim)
     if not derivative: return LL_Theta_Sigma
 
     n_common_T = len(common_T)
-    z = (Yi - m0_estim)[:, np.newaxis]
+    z = (Yi - m0_estim_i)[:, np.newaxis]
     d_Theta_Sigma = np.zeros_like(Theta_Sigma_i)
     d_Psi_Theta_Sigma = (- 0.5 * inv_Psi_Theta_Sigma 
                          + 0.5 * inv_Psi_Theta_Sigma.dot(np.outer(z, z)).dot(inv_Psi_Theta_Sigma)

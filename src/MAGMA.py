@@ -480,7 +480,7 @@ class MAGMA:
                 break
 
     
-    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list[np.ndarray, np.ndarray]:
+    def _predict_posterior_inference(self, T_new: np.ndarray=None) -> list:
         """
         Predict the posterior inference for new data.
 
@@ -538,7 +538,7 @@ class MAGMA:
         return K_new, m0_estim_new
 
 
-    def _learn_new_parameters(self, T_obs: np.ndarray, Y_obs: np.ndarray, m0_estim_obs: np.ndarray) -> list[np.ndarray, float]:
+    def _learn_new_parameters(self, T_obs: np.ndarray, Y_obs: np.ndarray, m0_estim_obs: np.ndarray) -> list:
         """
         Learn new parameters using EM.
 
