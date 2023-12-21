@@ -606,17 +606,17 @@ class MAGMA:
         Theta, Sigma = self._learn_new_parameters(T_obs, Y_obs, m0_estim_obs)
         Psi_p_obs, _ = compute_inv_Psi_individual_i(self.kernel_c, Theta, Sigma, T_p_obs, None)
 
-        Rho_p_obs = K_p_obs + Psi_p_obs
-        Rho_p_obs_argsort = np.zeros_like(Rho_p_obs)
-        Rho_p_obs_argsort[np.ix_(argsort_p_obs, argsort_p_obs)] = Rho_p_obs
-        Rho_p       = Rho_p_obs_argsort[:n_p, :n_p]
-        Rho_obs     = Rho_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
-        Rho_pobs    = Rho_p_obs_argsort[:n_p, n_p:]
-        Rho_obsp    = Rho_p_obs_argsort[n_p:, :n_p]
-        inv_Rho_obs = scipy.linalg.pinv(Rho_obs)
+        Gamma_p_obs = K_p_obs + Psi_p_obs
+        Gamma_p_obs_argsort = np.zeros_like(Gamma_p_obs)
+        Gamma_p_obs_argsort[np.ix_(argsort_p_obs, argsort_p_obs)] = Gamma_p_obs
+        Gamma_p       = Gamma_p_obs_argsort[:n_p, :n_p]
+        Gamma_obs     = Gamma_p_obs_argsort[n_p:, n_p:] + 1e-6 * np.identity(n_obs)
+        Gamma_pobs    = Gamma_p_obs_argsort[:n_p, n_p:]
+        Gamma_obsp    = Gamma_p_obs_argsort[n_p:, :n_p]
+        inv_Gamma_obs = scipy.linalg.pinv(Gamma_obs)
         
-        mu0 = m0_estim_p + (Rho_pobs).dot(inv_Rho_obs).dot(Y_obs - m0_estim_obs)
-        Rho = Rho_p - (Rho_pobs).dot(inv_Rho_obs).dot(Rho_obsp)
+        mu0 = m0_estim_p + (Gamma_pobs).dot(inv_Gamma_obs).dot(Y_obs - m0_estim_obs)
+        Gamma = Gamma_p - (Gamma_pobs).dot(inv_Gamma_obs).dot(Gamma_obsp)
 
-        return mu0, Rho
+        return mu0, Gamma
     
