@@ -140,6 +140,7 @@ class MAGMA:
         self.set_Sigma(Sigma)
         self.init_history()
 
+
     def set_common_T(self, common_T: Union[list, np.ndarray], T: Union[np.ndarray, list]=None) -> None: 
         """
         Set common time points.
